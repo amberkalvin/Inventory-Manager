@@ -392,7 +392,7 @@ export function QuickAddModal({
 
           <div>
             <label htmlFor="add-eta" className="block text-xs font-medium text-slate-400 mb-1">
-              Expected Return / Arrival Date
+              Date Sent
             </label>
             <input
               id="add-eta"

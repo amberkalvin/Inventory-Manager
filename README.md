@@ -18,7 +18,7 @@ Once published to GitHub with Pages enabled (`Settings → Pages → Source: Git
 - **Instant Search:** Filter immediately by Stock #, last 6 of VIN, Year/Make/Model, Location, Assigned Team Member, or Repair Notes.
 - **One-Tap Status Progression:** Move any unit to the next stage straight from the card or jump to any status via the quick dropdown.
 - **NHTSA VIN Auto-Decode:** Enter a 17-character VIN in the Quick-Add modal or Detail Drawer to auto-fill Year, Make, Model, and Trim.
-- **Per-User Field-Level Activity History:** Every change made to any vehicle field (status, location, mileage, cost, ETA, notes, VIN/specs, photo, archive/restore) is logged automatically with exact before/after values, user name, and timestamp.
+- **Per-User Field-Level Activity History:** Every change made to any vehicle field (status, location, mileage, cost, date sent, notes, VIN/specs, photo, archive/restore) is logged automatically with exact before/after values, user name, and timestamp.
 - **Google Sheets Live Sync + Shop PIN:** Protected by a 4-digit shop PIN (remembered per device) and synced across all team phones via Google Apps Script (`GET` on load and every 10 seconds; `POST` on every add, edit, move, or delete).
 - **One-Click CSV Backup & Optional Import:** Export your full lot inventory as a `.csv` (with native iOS/Android Share Sheets inside `.APK`/`.IPA`) or import vehicles from a CSV anytime.
 

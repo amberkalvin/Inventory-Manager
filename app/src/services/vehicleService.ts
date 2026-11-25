@@ -567,7 +567,7 @@ function buildVehicleChanges(
     pushNumberDiff('Est. Cost', previous.estimatedCost, nextUpdates.estimatedCost, formatCurrency);
   }
   if (has('expectedReturnDate')) {
-    pushStringDiff('ETA', previous.expectedReturnDate, nextUpdates.expectedReturnDate);
+    pushStringDiff('Date Sent', previous.expectedReturnDate, nextUpdates.expectedReturnDate);
   }
   if (has('repairNotes')) {
     pushStringDiff('Repair Notes', previous.repairNotes, nextUpdates.repairNotes);

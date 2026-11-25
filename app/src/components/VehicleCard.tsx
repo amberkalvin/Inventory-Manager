@@ -203,7 +203,7 @@ export function VehicleCard({
           {vehicle.expectedReturnDate && !archived && (
             <span className="inline-flex items-center gap-1 text-amber-300/90">
               <CalendarClock className="w-3.5 h-3.5 shrink-0" />
-              ETA {formatShortDate(vehicle.expectedReturnDate)}
+              Sent {formatShortDate(vehicle.expectedReturnDate)}
             </span>
           )}
           {checklistDone > 0 && (

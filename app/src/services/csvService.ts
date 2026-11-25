@@ -25,7 +25,7 @@ const CSV_HEADERS = [
   'Location',
   'Repair Notes',
   'Estimated Cost',
-  'Expected Return Date',
+  'Date Sent',
   'Assigned To',
   'Updated By',
   'Updated At',
@@ -138,7 +138,7 @@ export function parseCsvVehicles(csvText: string): NewVehicleInput[] {
   const iLocation = col('location', 'spot', 'shop');
   const iNotes = col('repairnotes', 'notes', 'comment', 'issue');
   const iCost = col('estimatedcost', 'cost', 'est');
-  const iEta = col('expectedreturndate', 'eta', 'return');
+  const iEta = col('datesent', 'sent', 'expectedreturndate', 'eta', 'return');
   const iAssigned = col('assignedto', 'assigned', 'owner', 'tech');
   const iChecklist = col('checklist', 'prep');
 
