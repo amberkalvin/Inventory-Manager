@@ -45,7 +45,7 @@ export function exportVehiclesToCsv(vehicles: Vehicle[]): void {
     CSV_HEADERS.join(','),
     ...vehicles.map((v) =>
       [
-        v.stockNumber,
+        v.stockNumber ?? '',
         v.vin ?? '',
         v.year,
         v.make,
@@ -148,7 +148,7 @@ export function parseCsvVehicles(csvText: string): NewVehicleInput[] {
     const get = (idx: number) => (idx >= 0 ? (cells[idx] ?? '').trim() : '');
     const make = get(iMake);
     const model = get(iModel);
-    const stock = get(iStock) || `STK-${2000 + r}`;
+    const stock = get(iStock) || undefined;
     if (!make && !model && !get(iVin)) continue;
 
     const yearNum = Number(get(iYear));

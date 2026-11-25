@@ -23,7 +23,7 @@ export const VEHICLE_CHECKLIST_ITEMS: ChecklistItemDef[] = [
 
 export interface Vehicle {
   id: string;
-  stockNumber: string;
+  stockNumber?: string;
   vin?: string;
   year: number;
   make: string;
@@ -89,6 +89,12 @@ export const STATUS_ORDER: VehicleStatus[] = [
 
 export function isVehicleArchived(vehicle: Pick<Vehicle, 'status' | 'archived'>): boolean {
   return Boolean(vehicle.archived || vehicle.status === 'ready');
+}
+
+export function getVehicleLabel(
+  vehicle: Pick<Vehicle, 'stockNumber' | 'year' | 'make' | 'model'>
+): string {
+  return vehicle.stockNumber?.trim() || `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
 }
 
 export function normalizeVehicleStatus(raw: unknown): VehicleStatus {

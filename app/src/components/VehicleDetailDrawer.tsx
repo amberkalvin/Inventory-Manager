@@ -55,7 +55,7 @@ export function VehicleDetailDrawer({
 }: VehicleDetailDrawerProps) {
   const [status, setStatus] = useState<VehicleStatus>(vehicle.status);
   const [photoUrl, setPhotoUrl] = useState<string>(vehicle.photoUrl ?? '');
-  const [stockNumber, setStockNumber] = useState(vehicle.stockNumber);
+  const [stockNumber, setStockNumber] = useState(vehicle.stockNumber ?? '');
   const [vin, setVin] = useState(vehicle.vin ?? '');
   const [year, setYear] = useState(String(vehicle.year));
   const [make, setMake] = useState(vehicle.make);
@@ -156,7 +156,7 @@ export function VehicleDetailDrawer({
     triggerHaptic('medium');
     try {
       await onSave(vehicle, {
-        stockNumber: stockNumber.trim().toUpperCase(),
+        stockNumber: stockNumber.trim() ? stockNumber.trim().toUpperCase() : undefined,
         vin: vin.trim() ? vin.trim().toUpperCase() : undefined,
         year: Number(year) || vehicle.year,
         make: make.trim() || vehicle.make,
@@ -205,23 +205,27 @@ export function VehicleDetailDrawer({
         {/* Top Drawer Header */}
         <div className="px-5 py-4 border-b border-white/[0.08] flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono-code text-xs font-semibold px-2 py-0.5 rounded-md bg-white/[0.07] text-slate-200">
-                {vehicle.stockNumber}
-              </span>
-              {wasArchived && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-400/25">
-                  <Archive className="w-3 h-3" />
-                  Archived
-                </span>
-              )}
-              {vehicle.estimatedCost ? (
-                <span className="font-mono-code text-xs text-amber-300/90">
-                  Est. {formatCurrency(vehicle.estimatedCost)}
-                </span>
-              ) : null}
-            </div>
-            <h2 className="mt-1 text-lg font-bold text-white tracking-tight truncate">
+            {(vehicle.stockNumber || wasArchived || vehicle.estimatedCost) && (
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                {vehicle.stockNumber && (
+                  <span className="font-mono-code text-xs font-semibold px-2 py-0.5 rounded-md bg-white/[0.07] text-slate-200">
+                    {vehicle.stockNumber}
+                  </span>
+                )}
+                {wasArchived && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-400/25">
+                    <Archive className="w-3 h-3" />
+                    Archived
+                  </span>
+                )}
+                {vehicle.estimatedCost ? (
+                  <span className="font-mono-code text-xs text-amber-300/90">
+                    Est. {formatCurrency(vehicle.estimatedCost)}
+                  </span>
+                ) : null}
+              </div>
+            )}
+            <h2 className="text-lg font-bold text-white tracking-tight truncate">
               {vehicle.year} {vehicle.make} {vehicle.model}
             </h2>
             <p className="text-xs text-slate-400">
@@ -528,10 +532,11 @@ export function VehicleDetailDrawer({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">
-                  Stock #
+                  Stock # <span className="text-slate-500 font-normal">(optional)</span>
                 </label>
                 <input
                   type="text"
+                  placeholder="Optional"
                   value={stockNumber}
                   onChange={(e) => setStockNumber(e.target.value)}
                   className="field-input font-mono-code uppercase"

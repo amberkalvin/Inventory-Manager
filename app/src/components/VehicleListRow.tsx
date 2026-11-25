@@ -71,9 +71,11 @@ export function VehicleListRow({
       {/* Primary Info */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="font-mono-code text-[11px] font-semibold px-1.5 py-0.5 rounded bg-white/[0.06] text-slate-200 border border-white/[0.07] shrink-0">
-            {vehicle.stockNumber}
-          </span>
+          {vehicle.stockNumber && (
+            <span className="font-mono-code text-[11px] font-semibold px-1.5 py-0.5 rounded bg-white/[0.06] text-slate-200 border border-white/[0.07] shrink-0">
+              {vehicle.stockNumber}
+            </span>
+          )}
           <h3 className="text-sm font-bold text-white truncate">
             {vehicle.year} {vehicle.make} {vehicle.model}
             {vehicle.trim ? (

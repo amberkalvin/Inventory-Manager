@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { INITIAL_MOCK_HISTORY, INITIAL_MOCK_VEHICLES } from '../data/mockVehicles';
 import {
+  getVehicleLabel,
   isVehicleArchived,
   normalizeVehicleStatus,
   STATUS_META,
@@ -337,7 +338,7 @@ export function subscribeVehicles(
         const updatedAt = normalizeTimestamp(data.updatedAt);
         return {
           id: d.id,
-          stockNumber: String(data.stockNumber ?? ''),
+          stockNumber: data.stockNumber ? String(data.stockNumber) : undefined,
           vin: data.vin ? String(data.vin) : undefined,
           year: Number(data.year ?? new Date().getFullYear()),
           make: String(data.make ?? ''),
@@ -443,9 +444,10 @@ export async function createVehicle(
   const nowIso = new Date().toISOString();
   const status: VehicleStatus = normalizeVehicleStatus(input.status);
   const archived = status === 'ready';
+  const stockSuffix = input.stockNumber ? ` (${input.stockNumber})` : '';
   const action = archived
-    ? `Added ${input.year} ${input.make} ${input.model} (${input.stockNumber}) as Frontline Ready (Archived)`
-    : `Added ${input.year} ${input.make} ${input.model} (${input.stockNumber}) as ${STATUS_META[status].label}`;
+    ? `Added ${input.year} ${input.make} ${input.model}${stockSuffix} as Frontline Ready (Archived)`
+    : `Added ${input.year} ${input.make} ${input.model}${stockSuffix} as ${STATUS_META[status].label}`;
 
   const initialChanges: HistoryChange[] = [
     { field: 'Status', to: STATUS_META[status].label },
@@ -632,8 +634,8 @@ export async function bulkImportVehicles(
         v.id,
         user,
         v.archived
-          ? `Imported ${v.stockNumber} via CSV (Archived as Frontline Ready)`
-          : `Imported ${v.stockNumber} via CSV`,
+          ? `Imported ${getVehicleLabel(v)} via CSV (Archived as Frontline Ready)`
+          : `Imported ${getVehicleLabel(v)} via CSV`,
         [
           { field: 'Status', to: STATUS_META[v.status].label },
           ...(v.archived ? [{ field: 'Archive', to: 'Archived (Frontline Ready)' }] : []),

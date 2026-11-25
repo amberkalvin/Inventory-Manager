@@ -17,6 +17,7 @@ import {
 import type { User as FirebaseUser } from 'firebase/auth';
 import { DEFAULT_TEAM_MEMBERS } from './data/mockVehicles';
 import {
+  getVehicleLabel,
   isVehicleArchived,
   STATUS_META,
   STATUS_ORDER,
@@ -205,7 +206,7 @@ export function App() {
       }
       if (!q) return true;
       const haystack = [
-        v.stockNumber,
+        v.stockNumber ?? '',
         v.vin ?? '',
         String(v.year),
         v.make,
@@ -225,6 +226,7 @@ export function App() {
   const suggestedStock = useMemo(() => {
     let maxNum = 1063;
     for (const v of vehicles) {
+      if (!v.stockNumber) continue;
       const match = v.stockNumber.match(/(\d+)$/);
       if (match) {
         const n = Number(match[1]);
@@ -258,13 +260,14 @@ export function App() {
     const wasArchived = isVehicleArchived(vehicle);
     const changed = await updateVehicle(activeUser, vehicle, { status: nextStatus });
     if (!changed) return;
+    const label = getVehicleLabel(vehicle);
 
     if (nextStatus === 'ready') {
-      showToast(`${vehicle.stockNumber} marked Frontline Ready & archived`);
+      showToast(`${label} marked Frontline Ready & archived`);
     } else if (wasArchived) {
-      showToast(`${vehicle.stockNumber} restored to ${STATUS_META[nextStatus].label}`);
+      showToast(`${label} restored to ${STATUS_META[nextStatus].label}`);
     } else {
-      showToast(`${vehicle.stockNumber} → ${STATUS_META[nextStatus].label}`);
+      showToast(`${label} → ${STATUS_META[nextStatus].label}`);
     }
   };
 
@@ -272,7 +275,7 @@ export function App() {
     if (!activeUser) return;
     const changed = await updateVehicle(activeUser, vehicle, { photoUrl: dataUrl });
     if (changed) {
-      showToast(`Updated photo for ${vehicle.stockNumber}`);
+      showToast(`Updated photo for ${getVehicleLabel(vehicle)}`);
     }
   };
 
@@ -293,7 +296,7 @@ export function App() {
       const label =
         VEHICLE_CHECKLIST_ITEMS.find((item) => item.key === key)?.label ?? key;
       showToast(
-        `${vehicle.stockNumber}: ${label} ${checked ? 'checked' : 'unchecked'}`
+        `${getVehicleLabel(vehicle)}: ${label} ${checked ? 'checked' : 'unchecked'}`
       );
     }
   };
@@ -311,10 +314,11 @@ export function App() {
   const handleCreateVehicle = async (input: NewVehicleInput) => {
     if (!activeUser) return;
     await createVehicle(activeUser, input);
+    const label = getVehicleLabel(input);
     if (input.status === 'ready') {
-      showToast(`Added ${input.stockNumber} to Archive (Frontline Ready)`);
+      showToast(`Added ${label} to Archive (Frontline Ready)`);
     } else {
-      showToast(`Added ${input.stockNumber}`);
+      showToast(`Added ${label}`);
     }
   };
 
@@ -331,13 +335,18 @@ export function App() {
       return;
     }
 
-    const stock = updates.stockNumber ?? previous.stockNumber;
+    const label = getVehicleLabel({
+      stockNumber: 'stockNumber' in updates ? updates.stockNumber : previous.stockNumber,
+      year: updates.year ?? previous.year,
+      make: updates.make ?? previous.make,
+      model: updates.model ?? previous.model,
+    });
     if (!wasArchived && nextStatus === 'ready') {
-      showToast(`${stock} marked Frontline Ready & archived`);
+      showToast(`${label} marked Frontline Ready & archived`);
     } else if (wasArchived && nextStatus !== 'ready') {
-      showToast(`${stock} restored to ${STATUS_META[nextStatus].label}`);
+      showToast(`${label} restored to ${STATUS_META[nextStatus].label}`);
     } else {
-      showToast(`Saved changes to ${stock}`);
+      showToast(`Saved changes to ${label}`);
     }
   };
 

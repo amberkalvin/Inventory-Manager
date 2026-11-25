@@ -24,8 +24,8 @@ export function QuickAddModal({
   const [vinMessage, setVinMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   const [photoUrl, setPhotoUrl] = useState<string>('');
-  const [stockNumber, setStockNumber] = useState(suggestedStock);
-  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [stockNumber, setStockNumber] = useState('');
+  const [year, setYear] = useState(() => String(new Date().getFullYear()));
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
   const [trim, setTrim] = useState('');
@@ -68,8 +68,8 @@ export function QuickAddModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
-    if (!stockNumber.trim() || !make.trim() || !model.trim()) {
-      setFormError('Stock #, Make, and Model are required.');
+    if (!make.trim() || !model.trim()) {
+      setFormError('Year, Make, and Model are required.');
       return;
     }
 
@@ -83,7 +83,7 @@ export function QuickAddModal({
     triggerHaptic('medium');
     try {
       await onSubmit({
-        stockNumber: stockNumber.trim().toUpperCase(),
+        stockNumber: stockNumber.trim() ? stockNumber.trim().toUpperCase() : undefined,
         vin: vin.trim() ? vin.trim().toUpperCase() : undefined,
         year: parsedYear,
         make: make.trim(),
@@ -255,19 +255,6 @@ export function QuickAddModal({
           {/* Core Vehicle Fields */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label htmlFor="add-stock" className="block text-xs font-medium text-slate-400 mb-1">
-                Stock # *
-              </label>
-              <input
-                id="add-stock"
-                type="text"
-                required
-                value={stockNumber}
-                onChange={(e) => setStockNumber(e.target.value)}
-                className="field-input font-mono-code uppercase"
-              />
-            </div>
-            <div>
               <label htmlFor="add-year" className="block text-xs font-medium text-slate-400 mb-1">
                 Year *
               </label>
@@ -278,6 +265,19 @@ export function QuickAddModal({
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
                 className="field-input font-mono-code"
+              />
+            </div>
+            <div>
+              <label htmlFor="add-stock" className="block text-xs font-medium text-slate-400 mb-1">
+                Stock # <span className="text-slate-500 font-normal">(optional)</span>
+              </label>
+              <input
+                id="add-stock"
+                type="text"
+                placeholder={suggestedStock ? `e.g. ${suggestedStock}` : 'Optional'}
+                value={stockNumber}
+                onChange={(e) => setStockNumber(e.target.value)}
+                className="field-input font-mono-code uppercase"
               />
             </div>
             <div>
