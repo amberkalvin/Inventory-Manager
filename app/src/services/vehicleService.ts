@@ -127,6 +127,7 @@ export function subscribeVehicles(
           estimatedCost: typeof data.estimatedCost === 'number' ? data.estimatedCost : undefined,
           expectedReturnDate: data.expectedReturnDate ? String(data.expectedReturnDate) : undefined,
           assignedTo: data.assignedTo ? String(data.assignedTo) : undefined,
+          photoUrl: data.photoUrl ? String(data.photoUrl) : undefined,
           updatedAt: normalizeTimestamp(data.updatedAt),
           updatedBy: String(data.updatedBy ?? 'Team'),
           createdAt: normalizeTimestamp(data.createdAt),
@@ -253,6 +254,11 @@ export async function updateVehicle(
   if (updates.estimatedCost !== undefined && updates.estimatedCost !== previous.estimatedCost) {
     changes.push(
       updates.estimatedCost ? `Estimated cost set to $${updates.estimatedCost}` : 'Cleared cost estimate'
+    );
+  }
+  if (updates.photoUrl !== undefined && updates.photoUrl !== (previous.photoUrl ?? '')) {
+    changes.push(
+      updates.photoUrl ? 'Updated vehicle photo' : 'Removed vehicle photo'
     );
   }
   const summary = changes.length > 0 ? changes.join(' · ') : 'Updated vehicle details';

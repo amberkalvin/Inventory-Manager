@@ -22,6 +22,7 @@ export interface Vehicle {
   estimatedCost?: number;
   expectedReturnDate?: string; // ISO YYYY-MM-DD
   assignedTo?: string;
+  photoUrl?: string; // Compressed JPEG data URL or hosted image URL
   updatedAt: string; // ISO timestamp
   updatedBy: string;
   createdAt: string; // ISO timestamp

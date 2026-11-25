@@ -15,17 +15,20 @@ import {
 } from '../types/vehicle';
 import { formatMileage, formatRelativeTime, formatShortDate } from '../utils/format';
 import { triggerHaptic } from '../services/nativeBridge';
+import { VehicleThumbnail } from './VehicleThumbnail';
 
 interface VehicleCardProps {
   vehicle: Vehicle;
   onSelect: (vehicle: Vehicle) => void;
   onQuickStatusChange: (vehicle: Vehicle, nextStatus: VehicleStatus) => Promise<void>;
+  onQuickPhotoChange: (vehicle: Vehicle, dataUrl: string) => Promise<void>;
 }
 
 export function VehicleCard({
   vehicle,
   onSelect,
   onQuickStatusChange,
+  onQuickPhotoChange,
 }: VehicleCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -58,26 +61,34 @@ export function VehicleCard({
       }}
       className="surface-card-interactive rounded-2xl p-4 cursor-pointer relative flex flex-col justify-between gap-3"
     >
-      {/* Top Row: Stock # + Status Pill */}
+      {/* Top Row: Thumbnail + Stock # + Status Pill */}
       <div>
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono-code text-xs font-semibold px-2 py-0.5 rounded-md bg-white/[0.06] text-slate-200 border border-white/[0.07]">
-                {vehicle.stockNumber}
-              </span>
-              {vehicle.vin && (
-                <span className="font-mono-code text-[11px] text-slate-500">
-                  …{vehicle.vin.slice(-6)}
+        <div className="flex items-start justify-between gap-2.5">
+          <div className="flex items-start gap-3 min-w-0">
+            <VehicleThumbnail
+              photoUrl={vehicle.photoUrl}
+              alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
+              size="md"
+              onPhotoChange={(dataUrl) => onQuickPhotoChange(vehicle, dataUrl)}
+            />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono-code text-xs font-semibold px-2 py-0.5 rounded-md bg-white/[0.06] text-slate-200 border border-white/[0.07]">
+                  {vehicle.stockNumber}
                 </span>
-              )}
+                {vehicle.vin && (
+                  <span className="font-mono-code text-[11px] text-slate-500">
+                    …{vehicle.vin.slice(-6)}
+                  </span>
+                )}
+              </div>
+              <h3 className="mt-1 text-[15px] font-bold tracking-tight text-white leading-snug">
+                {vehicle.year} {vehicle.make} {vehicle.model}
+                {vehicle.trim ? (
+                  <span className="font-medium text-slate-400"> {vehicle.trim}</span>
+                ) : null}
+              </h3>
             </div>
-            <h3 className="mt-1.5 text-[16px] font-bold tracking-tight text-white leading-snug">
-              {vehicle.year} {vehicle.make} {vehicle.model}
-              {vehicle.trim ? (
-                <span className="font-medium text-slate-400"> {vehicle.trim}</span>
-              ) : null}
-            </h3>
           </div>
 
           {/* Interactive Status Pill with Dropdown */}

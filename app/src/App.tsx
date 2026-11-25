@@ -4,6 +4,8 @@ import {
   CarFront,
   Cloud,
   CloudOff,
+  LayoutGrid,
+  List,
   Plus,
   Search,
   Settings,
@@ -34,6 +36,7 @@ import {
 } from './services/vehicleService';
 import { StatusSummaryBar, type StatusFilter } from './components/StatusSummaryBar';
 import { VehicleCard } from './components/VehicleCard';
+import { VehicleListRow } from './components/VehicleListRow';
 import { QuickAddModal } from './components/QuickAddModal';
 import { VehicleDetailDrawer } from './components/VehicleDetailDrawer';
 import { SettingsModal } from './components/SettingsModal';
@@ -41,6 +44,15 @@ import { AuthGate } from './components/AuthGate';
 import { triggerHaptic } from './services/nativeBridge';
 
 const LOCAL_USER_KEY = 'im_local_user_v1';
+const VIEW_MODE_KEY = 'im_view_mode_v1';
+
+function loadViewMode(): 'cards' | 'list' {
+  try {
+    return localStorage.getItem(VIEW_MODE_KEY) === 'list' ? 'list' : 'cards';
+  } catch {
+    return 'cards';
+  }
+}
 
 function loadLocalUser(): TeamUser {
   try {
@@ -78,6 +90,7 @@ export function App() {
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all_active');
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>(loadViewMode);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -225,6 +238,22 @@ export function App() {
     showToast(`${vehicle.stockNumber} → ${STATUS_META[nextStatus].label}`);
   };
 
+  const handleQuickPhoto = async (vehicle: Vehicle, dataUrl: string) => {
+    if (!activeUser) return;
+    await updateVehicle(activeUser, vehicle, { photoUrl: dataUrl });
+    showToast(`Updated photo for ${vehicle.stockNumber}`);
+  };
+
+  const handleToggleViewMode = (mode: 'cards' | 'list') => {
+    triggerHaptic('light');
+    setViewMode(mode);
+    try {
+      localStorage.setItem(VIEW_MODE_KEY, mode);
+    } catch {
+      // Ignore storage errors
+    }
+  };
+
   const handleCreateVehicle = async (input: NewVehicleInput) => {
     if (!activeUser) return;
     await createVehicle(activeUser, input);
@@ -352,7 +381,7 @@ export function App() {
           onSelect={setStatusFilter}
         />
 
-        {/* Instant Search Bar */}
+        {/* Instant Search Bar + Cards/List Toggle */}
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -374,6 +403,43 @@ export function App() {
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
+          </div>
+
+          <div
+            role="group"
+            aria-label="View layout"
+            className="shrink-0 flex items-center p-1 rounded-xl bg-[#0E121A] border border-white/[0.08]"
+          >
+            <button
+              id="view-mode-cards"
+              type="button"
+              onClick={() => handleToggleViewMode('cards')}
+              aria-pressed={viewMode === 'cards'}
+              title="Card view"
+              className={`inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                viewMode === 'cards'
+                  ? 'bg-[#1D283A] text-sky-300'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span className="hidden sm:inline">Cards</span>
+            </button>
+            <button
+              id="view-mode-list"
+              type="button"
+              onClick={() => handleToggleViewMode('list')}
+              aria-pressed={viewMode === 'list'}
+              title="List view"
+              className={`inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                viewMode === 'list'
+                  ? 'bg-[#1D283A] text-sky-300'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <List className="w-4 h-4" />
+              <span className="hidden sm:inline">List</span>
+            </button>
           </div>
         </div>
 
@@ -400,7 +466,7 @@ export function App() {
           )}
         </div>
 
-        {/* Vehicle Cards Grid */}
+        {/* Vehicle Cards Grid or Compact List */}
         {filteredVehicles.length === 0 ? (
           <div className="surface-card rounded-2xl py-14 px-6 text-center space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-white/[0.05] mx-auto flex items-center justify-center text-slate-400">
@@ -419,6 +485,18 @@ export function App() {
               Add Vehicle
             </button>
           </div>
+        ) : viewMode === 'list' ? (
+          <section aria-label="Vehicle list" className="flex flex-col gap-2">
+            {filteredVehicles.map((vehicle) => (
+              <VehicleListRow
+                key={vehicle.id}
+                vehicle={vehicle}
+                onSelect={setSelectedVehicle}
+                onQuickStatusChange={handleQuickStatus}
+                onQuickPhotoChange={handleQuickPhoto}
+              />
+            ))}
+          </section>
         ) : (
           <section
             aria-label="Vehicle list"
@@ -430,6 +508,7 @@ export function App() {
                 vehicle={vehicle}
                 onSelect={setSelectedVehicle}
                 onQuickStatusChange={handleQuickStatus}
+                onQuickPhotoChange={handleQuickPhoto}
               />
             ))}
           </section>

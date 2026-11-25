@@ -23,6 +23,7 @@ import {
 import { decodeVin } from '../services/vinDecoder';
 import { formatCurrency, formatRelativeTime } from '../utils/format';
 import { triggerHaptic } from '../services/nativeBridge';
+import { VehicleThumbnail } from './VehicleThumbnail';
 
 interface VehicleDetailDrawerProps {
   vehicle: Vehicle;
@@ -40,6 +41,7 @@ export function VehicleDetailDrawer({
   onDelete,
 }: VehicleDetailDrawerProps) {
   const [status, setStatus] = useState<VehicleStatus>(vehicle.status);
+  const [photoUrl, setPhotoUrl] = useState<string>(vehicle.photoUrl ?? '');
   const [stockNumber, setStockNumber] = useState(vehicle.stockNumber);
   const [vin, setVin] = useState(vehicle.vin ?? '');
   const [year, setYear] = useState(String(vehicle.year));
@@ -123,6 +125,7 @@ export function VehicleDetailDrawer({
           : undefined,
         expectedReturnDate: expectedReturnDate || undefined,
         repairNotes: repairNotes.trim() || undefined,
+        photoUrl: photoUrl,
       });
       onClose();
     } finally {
@@ -207,6 +210,15 @@ export function VehicleDetailDrawer({
 
         {tab === 'details' ? (
           <form onSubmit={handleSave} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+            {/* Vehicle Thumbnail Banner */}
+            <VehicleThumbnail
+              photoUrl={photoUrl || undefined}
+              alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
+              size="banner"
+              onPhotoChange={(dataUrl) => setPhotoUrl(dataUrl)}
+              onPhotoRemove={() => setPhotoUrl('')}
+            />
+
             {/* Quick Status Picker */}
             <div>
               <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">

@@ -4,6 +4,7 @@ import { STATUS_META, STATUS_ORDER, type VehicleStatus } from '../types/vehicle'
 import type { NewVehicleInput } from '../services/vehicleService';
 import { decodeVin } from '../services/vinDecoder';
 import { triggerHaptic } from '../services/nativeBridge';
+import { VehicleThumbnail } from './VehicleThumbnail';
 
 interface QuickAddModalProps {
   suggestedStock: string;
@@ -22,6 +23,7 @@ export function QuickAddModal({
   const [decoding, setDecoding] = useState(false);
   const [vinMessage, setVinMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
+  const [photoUrl, setPhotoUrl] = useState<string>('');
   const [stockNumber, setStockNumber] = useState(suggestedStock);
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [make, setMake] = useState('');
@@ -95,6 +97,7 @@ export function QuickAddModal({
           : undefined,
         expectedReturnDate: expectedReturnDate || undefined,
         repairNotes: repairNotes.trim() || undefined,
+        photoUrl: photoUrl || undefined,
       });
       onClose();
     } catch (err) {
@@ -117,7 +120,7 @@ export function QuickAddModal({
         <div className="px-5 py-4 border-b border-white/[0.08] flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-white tracking-tight">Add Vehicle</h2>
-            <p className="text-xs text-slate-400">Decode a 17-digit VIN or enter details manually</p>
+            <p className="text-xs text-slate-400">Snap a photo, decode a VIN, or enter details manually</p>
           </div>
           <button
             type="button"
@@ -130,6 +133,15 @@ export function QuickAddModal({
         </div>
 
         <form onSubmit={handleSubmit} className="overflow-y-auto px-5 py-4 space-y-4">
+          {/* Vehicle Thumbnail Upload */}
+          <VehicleThumbnail
+            photoUrl={photoUrl || undefined}
+            alt="New vehicle photo"
+            size="banner"
+            onPhotoChange={(dataUrl) => setPhotoUrl(dataUrl)}
+            onPhotoRemove={() => setPhotoUrl('')}
+          />
+
           {/* VIN Auto-Decode Bar */}
           <div className="rounded-xl bg-[#0D1119] border border-white/[0.08] p-3">
             <label htmlFor="add-vin" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
