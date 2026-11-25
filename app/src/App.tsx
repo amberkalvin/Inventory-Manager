@@ -688,6 +688,7 @@ export function App() {
 
       {selectedVehicle && (
         <VehicleDetailDrawer
+          key={selectedVehicle.id}
           vehicle={selectedVehicle}
           onClose={() => setSelectedVehicle(null)}
           onSave={handleSaveVehicle}

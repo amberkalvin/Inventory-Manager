@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Archive,
@@ -72,6 +72,39 @@ export function VehicleDetailDrawer({
     vehicle.expectedReturnDate ?? ''
   );
   const [repairNotes, setRepairNotes] = useState(vehicle.repairNotes ?? '');
+  const dirtyFieldsRef = useRef<Set<keyof NewVehicleInput>>(new Set());
+
+  const markDirty = (field: keyof NewVehicleInput) => {
+    dirtyFieldsRef.current.add(field);
+  };
+
+  // Keep untouched form fields in sync when background 10s polls update this vehicle
+  useEffect(() => {
+    const dirty = dirtyFieldsRef.current;
+    if (!dirty.has('status')) setStatus(vehicle.status);
+    if (!dirty.has('photoUrl')) setPhotoUrl(vehicle.photoUrl ?? '');
+    if (!dirty.has('stockNumber')) setStockNumber(vehicle.stockNumber ?? '');
+    if (!dirty.has('vin')) setVin(vehicle.vin ?? '');
+    if (!dirty.has('year')) setYear(String(vehicle.year));
+    if (!dirty.has('make')) setMake(vehicle.make);
+    if (!dirty.has('model')) setModel(vehicle.model);
+    if (!dirty.has('trim')) setTrim(vehicle.trim ?? '');
+    if (!dirty.has('color')) setColor(vehicle.color ?? '');
+    if (!dirty.has('mileage')) {
+      setMileage(vehicle.mileage !== undefined ? String(vehicle.mileage) : '');
+    }
+    if (!dirty.has('location')) setLocation(vehicle.location ?? '');
+    if (!dirty.has('assignedTo')) setAssignedTo(vehicle.assignedTo ?? '');
+    if (!dirty.has('estimatedCost')) {
+      setEstimatedCost(
+        vehicle.estimatedCost !== undefined ? String(vehicle.estimatedCost) : ''
+      );
+    }
+    if (!dirty.has('expectedReturnDate')) {
+      setExpectedReturnDate(vehicle.expectedReturnDate ?? '');
+    }
+    if (!dirty.has('repairNotes')) setRepairNotes(vehicle.repairNotes ?? '');
+  }, [vehicle]);
 
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [actionError, setActionError] = useState('');
@@ -133,39 +166,72 @@ export function VehicleDetailDrawer({
       setStatusBanner(res.error);
       return;
     }
-    if (res.year) setYear(String(res.year));
-    if (res.make) setMake(res.make);
-    if (res.model) setModel(res.model);
-    if (res.trim) setTrim(res.trim);
+    if (res.year) {
+      markDirty('year');
+      setYear(String(res.year));
+    }
+    if (res.make) {
+      markDirty('make');
+      setMake(res.make);
+    }
+    if (res.model) {
+      markDirty('model');
+      setModel(res.model);
+    }
+    if (res.trim) {
+      markDirty('trim');
+      setTrim(res.trim);
+    }
     triggerHaptic('success');
     setStatusBanner('VIN decoded from NHTSA.');
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    const dirty = dirtyFieldsRef.current;
+    if (dirty.size === 0) {
+      onClose();
+      return;
+    }
+
+    const updates: Partial<NewVehicleInput> = {};
+    if (dirty.has('stockNumber')) {
+      updates.stockNumber = stockNumber.trim() ? stockNumber.trim().toUpperCase() : undefined;
+    }
+    if (dirty.has('vin')) {
+      updates.vin = vin.trim() ? vin.trim().toUpperCase() : undefined;
+    }
+    if (dirty.has('year')) updates.year = Number(year) || vehicle.year;
+    if (dirty.has('make')) updates.make = make.trim() || vehicle.make;
+    if (dirty.has('model')) updates.model = model.trim() || vehicle.model;
+    if (dirty.has('trim')) updates.trim = trim.trim() || undefined;
+    if (dirty.has('color')) updates.color = color.trim() || undefined;
+    if (dirty.has('mileage')) {
+      updates.mileage = mileage.trim() ? Number(mileage.replace(/[^0-9]/g, '')) : undefined;
+    }
+    if (dirty.has('status')) updates.status = status;
+    if (dirty.has('location')) updates.location = location.trim() || undefined;
+    if (dirty.has('assignedTo')) updates.assignedTo = assignedTo.trim() || undefined;
+    if (dirty.has('estimatedCost')) {
+      updates.estimatedCost = estimatedCost.trim()
+        ? Number(estimatedCost.replace(/[^0-9.]/g, ''))
+        : undefined;
+    }
+    if (dirty.has('expectedReturnDate')) {
+      updates.expectedReturnDate = expectedReturnDate || undefined;
+    }
+    if (dirty.has('repairNotes')) {
+      updates.repairNotes = repairNotes.trim() || undefined;
+    }
+    if (dirty.has('photoUrl')) {
+      updates.photoUrl = photoUrl;
+    }
+
     setSaving(true);
     setActionError('');
     triggerHaptic('medium');
     try {
-      await onSave(vehicle, {
-        stockNumber: stockNumber.trim() ? stockNumber.trim().toUpperCase() : undefined,
-        vin: vin.trim() ? vin.trim().toUpperCase() : undefined,
-        year: Number(year) || vehicle.year,
-        make: make.trim() || vehicle.make,
-        model: model.trim() || vehicle.model,
-        trim: trim.trim() || undefined,
-        color: color.trim() || undefined,
-        mileage: mileage.trim() ? Number(mileage.replace(/[^0-9]/g, '')) : undefined,
-        status,
-        location: location.trim() || undefined,
-        assignedTo: assignedTo.trim() || undefined,
-        estimatedCost: estimatedCost.trim()
-          ? Number(estimatedCost.replace(/[^0-9.]/g, ''))
-          : undefined,
-        expectedReturnDate: expectedReturnDate || undefined,
-        repairNotes: repairNotes.trim() || undefined,
-        photoUrl: photoUrl,
-      });
+      await onSave(vehicle, updates);
       onClose();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Unable to save changes.');
@@ -273,8 +339,14 @@ export function VehicleDetailDrawer({
               photoUrl={photoUrl || undefined}
               alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
               size="banner"
-              onPhotoChange={(dataUrl) => setPhotoUrl(dataUrl)}
-              onPhotoRemove={() => setPhotoUrl('')}
+              onPhotoChange={(dataUrl) => {
+                markDirty('photoUrl');
+                setPhotoUrl(dataUrl);
+              }}
+              onPhotoRemove={() => {
+                markDirty('photoUrl');
+                setPhotoUrl('');
+              }}
             />
 
             {/* Quick Status Picker */}
@@ -292,6 +364,7 @@ export function VehicleDetailDrawer({
                       type="button"
                       onClick={() => {
                         triggerHaptic('light');
+                        markDirty('status');
                         setStatus(st);
                       }}
                       style={
@@ -320,6 +393,7 @@ export function VehicleDetailDrawer({
                 type="button"
                 onClick={() => {
                   triggerHaptic('light');
+                  markDirty('status');
                   setStatus('ready');
                 }}
                 style={
@@ -414,7 +488,10 @@ export function VehicleDetailDrawer({
                 <input
                   type="text"
                   value={location}
-                  onChange={(e) => setLocation(e.target.value)}
+                  onChange={(e) => {
+                    markDirty('location');
+                    setLocation(e.target.value);
+                  }}
                   placeholder="Main Lot / Shop"
                   className="field-input"
                 />
@@ -426,7 +503,10 @@ export function VehicleDetailDrawer({
                 <input
                   type="text"
                   value={assignedTo}
-                  onChange={(e) => setAssignedTo(e.target.value)}
+                  onChange={(e) => {
+                    markDirty('assignedTo');
+                    setAssignedTo(e.target.value);
+                  }}
                   placeholder="Team member"
                   className="field-input"
                 />
@@ -441,13 +521,16 @@ export function VehicleDetailDrawer({
               <textarea
                 rows={3}
                 value={repairNotes}
-                onChange={(e) => setRepairNotes(e.target.value)}
+                onChange={(e) => {
+                  markDirty('repairNotes');
+                  setRepairNotes(e.target.value);
+                }}
                 placeholder="What this vehicle needs (tune up, parts on order, body shop, keys...)"
                 className="field-input resize-none"
               />
             </div>
 
-            {/* Cost & ETA */}
+            {/* Cost & Date Sent */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">
@@ -457,7 +540,10 @@ export function VehicleDetailDrawer({
                   type="number"
                   inputMode="numeric"
                   value={estimatedCost}
-                  onChange={(e) => setEstimatedCost(e.target.value)}
+                  onChange={(e) => {
+                    markDirty('estimatedCost');
+                    setEstimatedCost(e.target.value);
+                  }}
                   className="field-input font-mono-code"
                 />
               </div>
@@ -468,7 +554,10 @@ export function VehicleDetailDrawer({
                 <input
                   type="date"
                   value={expectedReturnDate}
-                  onChange={(e) => setExpectedReturnDate(e.target.value)}
+                  onChange={(e) => {
+                    markDirty('expectedReturnDate');
+                    setExpectedReturnDate(e.target.value);
+                  }}
                   className="field-input"
                 />
               </div>
@@ -484,7 +573,10 @@ export function VehicleDetailDrawer({
                   type="text"
                   maxLength={17}
                   value={vin}
-                  onChange={(e) => setVin(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    markDirty('vin');
+                    setVin(e.target.value.toUpperCase());
+                  }}
                   className="field-input font-mono-code uppercase text-sm"
                 />
                 {vin && (
@@ -530,7 +622,10 @@ export function VehicleDetailDrawer({
                   type="text"
                   placeholder="Optional"
                   value={stockNumber}
-                  onChange={(e) => setStockNumber(e.target.value)}
+                  onChange={(e) => {
+                    markDirty('stockNumber');
+                    setStockNumber(e.target.value);
+                  }}
                   className="field-input font-mono-code uppercase"
                 />
               </div>
@@ -541,7 +636,10 @@ export function VehicleDetailDrawer({
                 <input
                   type="number"
                   value={year}
-                  onChange={(e) => setYear(e.target.value)}
+                  onChange={(e) => {
+                    markDirty('year');
+                    setYear(e.target.value);
+                  }}
                   className="field-input font-mono-code"
                 />
               </div>
@@ -552,7 +650,10 @@ export function VehicleDetailDrawer({
                 <input
                   type="text"
                   value={make}
-                  onChange={(e) => setMake(e.target.value)}
+                  onChange={(e) => {
+                    markDirty('make');
+                    setMake(e.target.value);
+                  }}
                   className="field-input"
                 />
               </div>
@@ -563,7 +664,10 @@ export function VehicleDetailDrawer({
                 <input
                   type="text"
                   value={model}
-                  onChange={(e) => setModel(e.target.value)}
+                  onChange={(e) => {
+                    markDirty('model');
+                    setModel(e.target.value);
+                  }}
                   className="field-input"
                 />
               </div>
@@ -574,7 +678,10 @@ export function VehicleDetailDrawer({
                 <input
                   type="text"
                   value={trim}
-                  onChange={(e) => setTrim(e.target.value)}
+                  onChange={(e) => {
+                    markDirty('trim');
+                    setTrim(e.target.value);
+                  }}
                   className="field-input"
                 />
               </div>
@@ -585,7 +692,10 @@ export function VehicleDetailDrawer({
                 <input
                   type="text"
                   value={color}
-                  onChange={(e) => setColor(e.target.value)}
+                  onChange={(e) => {
+                    markDirty('color');
+                    setColor(e.target.value);
+                  }}
                   className="field-input"
                 />
               </div>
@@ -597,7 +707,10 @@ export function VehicleDetailDrawer({
                   type="number"
                   inputMode="numeric"
                   value={mileage}
-                  onChange={(e) => setMileage(e.target.value)}
+                  onChange={(e) => {
+                    markDirty('mileage');
+                    setMileage(e.target.value);
+                  }}
                   className="field-input font-mono-code"
                 />
               </div>
