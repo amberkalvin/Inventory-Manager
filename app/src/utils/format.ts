@@ -12,6 +12,17 @@ export function formatRelativeTime(iso: string): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+export function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 export function formatCurrency(val?: number): string {
   if (val === undefined || val === null || Number.isNaN(val)) return '—';
   return new Intl.NumberFormat('en-US', {

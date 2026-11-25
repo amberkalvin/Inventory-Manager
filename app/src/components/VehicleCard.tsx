@@ -1,15 +1,20 @@
 import { useState } from 'react';
 import {
+  Archive,
   ArrowRight,
   CalendarClock,
+  CheckSquare,
   ChevronDown,
   MapPin,
+  RotateCcw,
   User,
   Wrench,
 } from 'lucide-react';
 import {
+  isVehicleArchived,
   STATUS_META,
   STATUS_ORDER,
+  VEHICLE_CHECKLIST_ITEMS,
   type Vehicle,
   type VehicleStatus,
 } from '../types/vehicle';
@@ -33,6 +38,10 @@ export function VehicleCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
   const meta = STATUS_META[vehicle.status];
+  const archived = isVehicleArchived(vehicle);
+  const checklistDone = VEHICLE_CHECKLIST_ITEMS.filter((item) =>
+    Boolean(vehicle.checklist?.[item.key])
+  ).length;
 
   const handleStatusUpdate = async (
     e: React.MouseEvent,
@@ -115,7 +124,7 @@ export function VehicleCard({
             {menuOpen && (
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="absolute right-0 mt-1.5 w-44 rounded-xl bg-[#182030] border border-white/15 shadow-2xl p-1.5 z-30"
+                className="absolute right-0 mt-1.5 w-52 rounded-xl bg-[#182030] border border-white/15 shadow-2xl p-1.5 z-30"
               >
                 {STATUS_ORDER.map((st) => {
                   const stMeta = STATUS_META[st];
@@ -133,11 +142,16 @@ export function VehicleCard({
                     >
                       <span className="flex items-center gap-2">
                         <span
-                          className="w-2 h-2 rounded-full"
+                          className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: stMeta.color }}
                         />
                         {stMeta.label}
                       </span>
+                      {st === 'ready' && !archived && (
+                        <span className="text-[10px] text-emerald-400/90 font-semibold">
+                          Archive
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -166,10 +180,16 @@ export function VehicleCard({
               {vehicle.assignedTo}
             </span>
           )}
-          {vehicle.expectedReturnDate && vehicle.status !== 'ready' && vehicle.status !== 'sold' && (
+          {vehicle.expectedReturnDate && !archived && (
             <span className="inline-flex items-center gap-1 text-amber-300/90">
               <CalendarClock className="w-3.5 h-3.5 shrink-0" />
               ETA {formatShortDate(vehicle.expectedReturnDate)}
+            </span>
+          )}
+          {checklistDone > 0 && (
+            <span className="inline-flex items-center gap-1 font-mono-code text-emerald-300/90">
+              <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+              {checklistDone}/{VEHICLE_CHECKLIST_ITEMS.length}
             </span>
           )}
         </div>
@@ -186,7 +206,9 @@ export function VehicleCard({
       {/* Bottom Action Row: Accountability + One-Tap Advance */}
       <div className="pt-2.5 border-t border-white/[0.06] flex items-center justify-between gap-2">
         <span className="text-[11px] text-slate-500 truncate">
-          Updated {formatRelativeTime(vehicle.updatedAt)} by{' '}
+          {archived && vehicle.archivedAt
+            ? `Archived ${formatRelativeTime(vehicle.archivedAt)} by `
+            : `Updated ${formatRelativeTime(vehicle.updatedAt)} by `}
           <strong className="text-slate-300 font-medium">{vehicle.updatedBy}</strong>
         </span>
 
@@ -194,10 +216,19 @@ export function VehicleCard({
           type="button"
           disabled={updating}
           onClick={(e) => handleStatusUpdate(e, meta.nextStatus)}
-          className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-sky-500/20 hover:text-sky-300 text-slate-200 border border-white/[0.08] transition-colors cursor-pointer disabled:opacity-50"
+          className={`shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors cursor-pointer disabled:opacity-50 ${
+            meta.nextStatus === 'ready'
+              ? 'bg-emerald-500/12 hover:bg-emerald-500/22 text-emerald-300 border-emerald-400/25'
+              : 'bg-white/[0.06] hover:bg-sky-500/20 hover:text-sky-300 text-slate-200 border-white/[0.08]'
+          }`}
         >
+          {archived ? (
+            <RotateCcw className="w-3.5 h-3.5" />
+          ) : meta.nextStatus === 'ready' ? (
+            <Archive className="w-3.5 h-3.5" />
+          ) : null}
           <span>{updating ? 'Saving…' : meta.nextLabel}</span>
-          <ArrowRight className="w-3.5 h-3.5" />
+          {!archived && meta.nextStatus !== 'ready' && <ArrowRight className="w-3.5 h-3.5" />}
         </button>
       </div>
     </article>

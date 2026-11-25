@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Archive,
+  ArrowLeft,
   CarFront,
   Cloud,
   CloudOff,
@@ -15,10 +17,13 @@ import {
 import type { User as FirebaseUser } from 'firebase/auth';
 import { DEFAULT_TEAM_MEMBERS } from './data/mockVehicles';
 import {
+  isVehicleArchived,
   STATUS_META,
   STATUS_ORDER,
+  VEHICLE_CHECKLIST_ITEMS,
   type TeamUser,
   type Vehicle,
+  type VehicleChecklistKey,
   type VehicleStatus,
 } from './types/vehicle';
 import {
@@ -88,6 +93,7 @@ export function App() {
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
 
+  const [showArchive, setShowArchive] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all_active');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'cards' | 'list'>(loadViewMode);
@@ -100,7 +106,7 @@ export function App() {
     setToast(msg);
     setTimeout(() => {
       setToast((current) => (current === msg ? null : current));
-    }, 2400);
+    }, 2600);
   };
 
   // Track device connectivity for lot-walk awareness
@@ -161,6 +167,16 @@ export function App() {
     return () => unsub();
   }, [activeUser]);
 
+  const activeVehicles = useMemo(
+    () => vehicles.filter((v) => !isVehicleArchived(v)),
+    [vehicles]
+  );
+
+  const archivedVehicles = useMemo(
+    () => vehicles.filter((v) => isVehicleArchived(v)),
+    [vehicles]
+  );
+
   const statusCounts = useMemo(() => {
     const counts: Record<VehicleStatus, number> = {
       incoming: 0,
@@ -168,24 +184,23 @@ export function App() {
       major_repair: 0,
       offsite: 0,
       ready: 0,
-      sold: 0,
     };
     for (const v of vehicles) {
-      if (counts[v.status] !== undefined) counts[v.status]++;
+      if (isVehicleArchived(v)) {
+        counts.ready++;
+      } else if (counts[v.status] !== undefined) {
+        counts[v.status]++;
+      }
     }
     return counts;
   }, [vehicles]);
 
-  const activeLotCount = useMemo(
-    () => vehicles.filter((v) => v.status !== 'sold').length,
-    [vehicles]
-  );
-
   const filteredVehicles = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return vehicles.filter((v) => {
-      if (statusFilter === 'all_active' && v.status === 'sold') return false;
-      if (statusFilter !== 'all_active' && statusFilter !== 'all' && v.status !== statusFilter) {
+    const pool = showArchive ? archivedVehicles : activeVehicles;
+
+    return pool.filter((v) => {
+      if (!showArchive && statusFilter !== 'all_active' && v.status !== statusFilter) {
         return false;
       }
       if (!q) return true;
@@ -205,7 +220,7 @@ export function App() {
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [vehicles, statusFilter, searchQuery]);
+  }, [activeVehicles, archivedVehicles, showArchive, statusFilter, searchQuery]);
 
   const suggestedStock = useMemo(() => {
     let maxNum = 1063;
@@ -232,16 +247,55 @@ export function App() {
     setHasFirebaseConfig(Boolean(getSavedFirebaseConfig()));
   };
 
+  const handleToggleArchive = () => {
+    triggerHaptic('light');
+    setShowArchive((prev) => !prev);
+    setSearchQuery('');
+  };
+
   const handleQuickStatus = async (vehicle: Vehicle, nextStatus: VehicleStatus) => {
     if (!activeUser) return;
-    await updateVehicle(activeUser, vehicle, { status: nextStatus });
-    showToast(`${vehicle.stockNumber} → ${STATUS_META[nextStatus].label}`);
+    const wasArchived = isVehicleArchived(vehicle);
+    const changed = await updateVehicle(activeUser, vehicle, { status: nextStatus });
+    if (!changed) return;
+
+    if (nextStatus === 'ready') {
+      showToast(`${vehicle.stockNumber} marked Frontline Ready & archived`);
+    } else if (wasArchived) {
+      showToast(`${vehicle.stockNumber} restored to ${STATUS_META[nextStatus].label}`);
+    } else {
+      showToast(`${vehicle.stockNumber} → ${STATUS_META[nextStatus].label}`);
+    }
   };
 
   const handleQuickPhoto = async (vehicle: Vehicle, dataUrl: string) => {
     if (!activeUser) return;
-    await updateVehicle(activeUser, vehicle, { photoUrl: dataUrl });
-    showToast(`Updated photo for ${vehicle.stockNumber}`);
+    const changed = await updateVehicle(activeUser, vehicle, { photoUrl: dataUrl });
+    if (changed) {
+      showToast(`Updated photo for ${vehicle.stockNumber}`);
+    }
+  };
+
+  const handleToggleChecklist = async (
+    vehicle: Vehicle,
+    key: VehicleChecklistKey,
+    checked: boolean
+  ) => {
+    if (!activeUser) return;
+    const nextChecklist = {
+      ...(vehicle.checklist ?? {}),
+      [key]: checked,
+    };
+    const changed = await updateVehicle(activeUser, vehicle, {
+      checklist: nextChecklist,
+    });
+    if (changed) {
+      const label =
+        VEHICLE_CHECKLIST_ITEMS.find((item) => item.key === key)?.label ?? key;
+      showToast(
+        `${vehicle.stockNumber}: ${label} ${checked ? 'checked' : 'unchecked'}`
+      );
+    }
   };
 
   const handleToggleViewMode = (mode: 'cards' | 'list') => {
@@ -257,7 +311,11 @@ export function App() {
   const handleCreateVehicle = async (input: NewVehicleInput) => {
     if (!activeUser) return;
     await createVehicle(activeUser, input);
-    showToast(`Added ${input.stockNumber}`);
+    if (input.status === 'ready') {
+      showToast(`Added ${input.stockNumber} to Archive (Frontline Ready)`);
+    } else {
+      showToast(`Added ${input.stockNumber}`);
+    }
   };
 
   const handleSaveVehicle = async (
@@ -265,8 +323,22 @@ export function App() {
     updates: Partial<NewVehicleInput>
   ) => {
     if (!activeUser) return;
-    await updateVehicle(activeUser, previous, updates);
-    showToast(`Updated ${updates.stockNumber ?? previous.stockNumber}`);
+    const wasArchived = isVehicleArchived(previous);
+    const nextStatus = updates.status ?? previous.status;
+    const changed = await updateVehicle(activeUser, previous, updates);
+    if (!changed) {
+      showToast('No changes to save');
+      return;
+    }
+
+    const stock = updates.stockNumber ?? previous.stockNumber;
+    if (!wasArchived && nextStatus === 'ready') {
+      showToast(`${stock} marked Frontline Ready & archived`);
+    } else if (wasArchived && nextStatus !== 'ready') {
+      showToast(`${stock} restored to ${STATUS_META[nextStatus].label}`);
+    } else {
+      showToast(`Saved changes to ${stock}`);
+    }
   };
 
   const handleDeleteVehicle = async (vehicleId: string) => {
@@ -329,6 +401,31 @@ export function App() {
 
           <div className="flex items-center gap-2 shrink-0">
             <button
+              id="toggle-archive-btn"
+              type="button"
+              onClick={handleToggleArchive}
+              aria-pressed={showArchive}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
+                showArchive
+                  ? 'bg-emerald-500/18 border-emerald-400/40 text-emerald-300'
+                  : 'bg-white/[0.06] hover:bg-white/10 border-white/[0.08] text-slate-200'
+              }`}
+              title={showArchive ? 'Back to Active Lot' : 'View Archived Vehicles'}
+            >
+              <Archive className="w-3.5 h-3.5" />
+              <span>Archive</span>
+              <span
+                className={`font-mono-code text-[11px] px-1.5 py-0.2 rounded-md ${
+                  showArchive
+                    ? 'bg-emerald-400/20 text-emerald-200'
+                    : 'bg-white/10 text-slate-300'
+                }`}
+              >
+                {archivedVehicles.length}
+              </span>
+            </button>
+
+            <button
               id="desktop-add-vehicle-btn"
               type="button"
               onClick={() => {
@@ -373,13 +470,42 @@ export function App() {
           </div>
         )}
 
-        {/* Tappable Status Counters */}
-        <StatusSummaryBar
-          counts={statusCounts}
-          activeCount={activeLotCount}
-          selected={statusFilter}
-          onSelect={setStatusFilter}
-        />
+        {/* Archive Header Banner OR Active Lot Status Summary Bar */}
+        {showArchive ? (
+          <section
+            aria-label="Archive header"
+            className="rounded-2xl bg-emerald-500/10 border border-emerald-400/25 px-4 py-3.5 flex flex-wrap items-center justify-between gap-3"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-400/25 flex items-center justify-center text-emerald-300 shrink-0">
+                <Archive className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold text-white">
+                  Frontline Ready Archive ({archivedVehicles.length})
+                </h2>
+                <p className="text-xs text-slate-300/80">
+                  Vehicles marked Frontline Ready are stored here and hidden from the active lot.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleArchive}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.08] hover:bg-white/14 text-xs font-semibold text-white cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Back to Active Lot
+            </button>
+          </section>
+        ) : (
+          <StatusSummaryBar
+            counts={statusCounts}
+            activeCount={activeVehicles.length}
+            selected={statusFilter}
+            onSelect={setStatusFilter}
+          />
+        )}
 
         {/* Instant Search Bar + Cards/List Toggle */}
         <div className="flex items-center gap-2">
@@ -390,7 +516,11 @@ export function App() {
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search Stock #, last 6 of VIN, Make, Model, or Location…"
+              placeholder={
+                showArchive
+                  ? 'Search archived vehicles by Stock #, VIN, Make, Model, or Location…'
+                  : 'Search active lot by Stock #, last 6 of VIN, Make, Model, or Location…'
+              }
               className="field-input pl-10 pr-9 text-sm"
             />
             {searchQuery && (
@@ -448,11 +578,13 @@ export function App() {
           <span>
             Showing <strong className="text-slate-200">{filteredVehicles.length}</strong>{' '}
             {filteredVehicles.length === 1 ? 'vehicle' : 'vehicles'}
-            {statusFilter !== 'all_active' && statusFilter !== 'all'
-              ? ` in ${STATUS_META[statusFilter].label}`
-              : ' on active lot'}
+            {showArchive
+              ? ' in Archive'
+              : statusFilter !== 'all_active'
+                ? ` in ${STATUS_META[statusFilter].label}`
+                : ' on active lot'}
           </span>
-          {(statusFilter !== 'all_active' || searchQuery) && (
+          {((!showArchive && statusFilter !== 'all_active') || searchQuery) && (
             <button
               type="button"
               onClick={() => {
@@ -470,20 +602,39 @@ export function App() {
         {filteredVehicles.length === 0 ? (
           <div className="surface-card rounded-2xl py-14 px-6 text-center space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-white/[0.05] mx-auto flex items-center justify-center text-slate-400">
-              <CarFront className="w-6 h-6" />
+              {showArchive ? <Archive className="w-6 h-6" /> : <CarFront className="w-6 h-6" />}
             </div>
-            <h2 className="text-base font-bold text-white">No vehicles match this view</h2>
+            <h2 className="text-base font-bold text-white">
+              {showArchive
+                ? searchQuery
+                  ? 'No archived vehicles match your search'
+                  : 'Archive is empty'
+                : 'No vehicles match this view'}
+            </h2>
             <p className="text-xs text-slate-400 max-w-xs mx-auto">
-              Clear your search filter or tap Add Vehicle to log a new unit with instant VIN decoding.
+              {showArchive
+                ? 'When a vehicle is marked Frontline Ready, it moves here automatically.'
+                : 'Clear your search filter or tap Add Vehicle to log a new unit with instant VIN decoding.'}
             </p>
-            <button
-              type="button"
-              onClick={() => setShowQuickAdd(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              Add Vehicle
-            </button>
+            {showArchive ? (
+              <button
+                type="button"
+                onClick={handleToggleArchive}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/14 text-white font-semibold text-xs cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to Active Lot
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowQuickAdd(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                Add Vehicle
+              </button>
+            )}
           </div>
         ) : viewMode === 'list' ? (
           <section aria-label="Vehicle list" className="flex flex-col gap-2">
@@ -516,19 +667,21 @@ export function App() {
       </main>
 
       {/* Mobile Floating Action Button (+ Add Vehicle) */}
-      <button
-        id="mobile-add-vehicle-fab"
-        type="button"
-        onClick={() => {
-          triggerHaptic('medium');
-          setShowQuickAdd(true);
-        }}
-        style={{ bottom: 'calc(20px + env(safe-area-inset-bottom, 0px))' }}
-        className="sm:hidden fixed right-4 z-40 inline-flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-sky-500 active:scale-95 text-slate-950 font-extrabold text-sm shadow-2xl shadow-sky-950/60 transition-transform cursor-pointer"
-      >
-        <Plus className="w-5 h-5 stroke-[2.5]" />
-        Add Vehicle
-      </button>
+      {!showArchive && (
+        <button
+          id="mobile-add-vehicle-fab"
+          type="button"
+          onClick={() => {
+            triggerHaptic('medium');
+            setShowQuickAdd(true);
+          }}
+          style={{ bottom: 'calc(20px + env(safe-area-inset-bottom, 0px))' }}
+          className="sm:hidden fixed right-4 z-40 inline-flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-sky-500 active:scale-95 text-slate-950 font-extrabold text-sm shadow-2xl shadow-sky-950/60 transition-transform cursor-pointer"
+        >
+          <Plus className="w-5 h-5 stroke-[2.5]" />
+          Add Vehicle
+        </button>
+      )}
 
       {/* Subtle Toast Confirmation */}
       {toast && (
@@ -556,6 +709,7 @@ export function App() {
           mode={currentUser.mode}
           onClose={() => setSelectedVehicle(null)}
           onSave={handleSaveVehicle}
+          onToggleChecklist={handleToggleChecklist}
           onDelete={handleDeleteVehicle}
         />
       )}

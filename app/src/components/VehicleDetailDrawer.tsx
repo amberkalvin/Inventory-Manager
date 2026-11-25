@@ -1,19 +1,25 @@
 import { useEffect, useState } from 'react';
 import {
+  Archive,
+  ArrowRight,
   Check,
   Clock,
   Copy,
   History,
   Loader2,
+  RotateCcw,
   Search,
   Trash2,
   X,
 } from 'lucide-react';
 import {
+  ACTIVE_STATUS_ORDER,
+  isVehicleArchived,
   STATUS_META,
-  STATUS_ORDER,
+  VEHICLE_CHECKLIST_ITEMS,
   type HistoryEntry,
   type Vehicle,
+  type VehicleChecklistKey,
   type VehicleStatus,
 } from '../types/vehicle';
 import {
@@ -21,7 +27,7 @@ import {
   type NewVehicleInput,
 } from '../services/vehicleService';
 import { decodeVin } from '../services/vinDecoder';
-import { formatCurrency, formatRelativeTime } from '../utils/format';
+import { formatCurrency, formatDateTime, formatRelativeTime } from '../utils/format';
 import { triggerHaptic } from '../services/nativeBridge';
 import { VehicleThumbnail } from './VehicleThumbnail';
 
@@ -30,6 +36,11 @@ interface VehicleDetailDrawerProps {
   mode: 'firebase' | 'local';
   onClose: () => void;
   onSave: (previous: Vehicle, updates: Partial<NewVehicleInput>) => Promise<void>;
+  onToggleChecklist: (
+    vehicle: Vehicle,
+    key: VehicleChecklistKey,
+    checked: boolean
+  ) => Promise<void>;
   onDelete: (vehicleId: string) => Promise<void>;
 }
 
@@ -38,6 +49,7 @@ export function VehicleDetailDrawer({
   mode,
   onClose,
   onSave,
+  onToggleChecklist,
   onDelete,
 }: VehicleDetailDrawerProps) {
   const [status, setStatus] = useState<VehicleStatus>(vehicle.status);
@@ -69,6 +81,27 @@ export function VehicleDetailDrawer({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [tab, setTab] = useState<'details' | 'history'>('details');
   const [statusBanner, setStatusBanner] = useState('');
+  const [togglingKey, setTogglingKey] = useState<VehicleChecklistKey | null>(null);
+
+  const wasArchived = isVehicleArchived(vehicle);
+  const willArchive = !wasArchived && status === 'ready';
+  const willRestore = wasArchived && status !== 'ready';
+  const readyMeta = STATUS_META.ready;
+  const completedChecklistCount = VEHICLE_CHECKLIST_ITEMS.filter((item) =>
+    Boolean(vehicle.checklist?.[item.key])
+  ).length;
+
+  const handleChecklistToggle = async (key: VehicleChecklistKey) => {
+    if (togglingKey) return;
+    const nextChecked = !Boolean(vehicle.checklist?.[key]);
+    triggerHaptic('light');
+    setTogglingKey(key);
+    try {
+      await onToggleChecklist(vehicle, key, nextChecked);
+    } finally {
+      setTogglingKey(null);
+    }
+  };
 
   useEffect(() => {
     const unsub = subscribeVehicleHistory(mode, vehicle.id, setHistory);
@@ -156,10 +189,16 @@ export function VehicleDetailDrawer({
         {/* Top Drawer Header */}
         <div className="px-5 py-4 border-b border-white/[0.08] flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono-code text-xs font-semibold px-2 py-0.5 rounded-md bg-white/[0.07] text-slate-200">
                 {vehicle.stockNumber}
               </span>
+              {wasArchived && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-400/25">
+                  <Archive className="w-3 h-3" />
+                  Archived
+                </span>
+              )}
               {vehicle.estimatedCost ? (
                 <span className="font-mono-code text-xs text-amber-300/90">
                   Est. {formatCurrency(vehicle.estimatedCost)}
@@ -220,12 +259,12 @@ export function VehicleDetailDrawer({
             />
 
             {/* Quick Status Picker */}
-            <div>
-              <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+            <div className="space-y-2">
+              <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                 Current Status
               </span>
-              <div className="grid grid-cols-3 gap-1.5">
-                {STATUS_ORDER.map((st) => {
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {ACTIVE_STATUS_ORDER.map((st) => {
                   const meta = STATUS_META[st];
                   const active = st === status;
                   return (
@@ -252,6 +291,95 @@ export function VehicleDetailDrawer({
                       }`}
                     >
                       {meta.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Frontline Ready (Auto-Archive) Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setStatus('ready');
+                }}
+                style={
+                  status === 'ready'
+                    ? {
+                        backgroundColor: readyMeta.bgTint,
+                        borderColor: readyMeta.borderTint,
+                        color: readyMeta.color,
+                      }
+                    : undefined
+                }
+                className={`w-full px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  status === 'ready'
+                    ? ''
+                    : 'bg-[#0E121A] border-white/[0.08] text-slate-300 hover:border-emerald-400/35 hover:text-emerald-300'
+                }`}
+              >
+                <Archive className="w-3.5 h-3.5" />
+                <span>Frontline Ready (Archive Vehicle)</span>
+              </button>
+
+              {willArchive && (
+                <p className="text-xs text-emerald-300/90 bg-emerald-500/10 border border-emerald-400/20 rounded-xl px-3 py-2 flex items-center gap-2">
+                  <Archive className="w-3.5 h-3.5 shrink-0" />
+                  Saving as Frontline Ready will move this vehicle to the Archive.
+                </p>
+              )}
+
+              {willRestore && (
+                <p className="text-xs text-sky-300/90 bg-sky-500/10 border border-sky-400/20 rounded-xl px-3 py-2 flex items-center gap-2">
+                  <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                  Saving will restore this vehicle from the Archive back to the Active Lot.
+                </p>
+              )}
+            </div>
+
+            {/* Prep Checklist (saves immediately & logs to Activity history) */}
+            <div className="rounded-2xl bg-[#0D1119] border border-white/[0.08] p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Prep Checklist
+                </span>
+                <span className="font-mono-code text-[11px] font-semibold text-slate-400">
+                  {completedChecklistCount}/{VEHICLE_CHECKLIST_ITEMS.length} Done
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {VEHICLE_CHECKLIST_ITEMS.map((item) => {
+                  const checked = Boolean(vehicle.checklist?.[item.key]);
+                  const busy = togglingKey === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      id={`checklist-${item.key}`}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={checked}
+                      disabled={togglingKey !== null}
+                      onClick={() => handleChecklistToggle(item.key)}
+                      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left text-xs font-semibold transition-all cursor-pointer disabled:opacity-60 ${
+                        checked
+                          ? 'bg-emerald-500/12 border-emerald-400/35 text-emerald-200'
+                          : 'bg-[#121721] border-white/[0.08] text-slate-300 hover:border-white/20 hover:text-white'
+                      }`}
+                    >
+                      <span
+                        className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
+                          checked
+                            ? 'bg-emerald-500 border-emerald-400 text-slate-950'
+                            : 'border-slate-500 bg-transparent'
+                        }`}
+                      >
+                        {busy ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : checked ? (
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        ) : null}
+                      </span>
+                      <span className="truncate">{item.label}</span>
                     </button>
                   );
                 })}
@@ -475,9 +603,19 @@ export function VehicleDetailDrawer({
               <button
                 type="submit"
                 disabled={saving}
-                className="flex-1 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-sm transition-colors cursor-pointer disabled:opacity-50"
+                className={`flex-1 py-3 rounded-xl font-bold text-sm transition-colors cursor-pointer disabled:opacity-50 ${
+                  willArchive
+                    ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
+                    : 'bg-sky-500 hover:bg-sky-400 text-slate-950'
+                }`}
               >
-                {saving ? 'Saving Changes…' : 'Save Changes'}
+                {saving
+                  ? 'Saving Changes…'
+                  : willArchive
+                    ? 'Save & Archive Vehicle'
+                    : willRestore
+                      ? 'Save & Restore to Lot'
+                      : 'Save Changes'}
               </button>
             </div>
           </form>
@@ -491,14 +629,62 @@ export function VehicleDetailDrawer({
               history.map((entry) => (
                 <div
                   key={entry.id}
-                  className="rounded-xl bg-[#0D1119] border border-white/[0.07] p-3.5"
+                  className="rounded-xl bg-[#0D1119] border border-white/[0.07] p-3.5 space-y-2.5"
                 >
-                  <p className="text-sm text-slate-100 leading-snug">{entry.action}</p>
-                  <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-                    <span className="font-medium text-slate-400">{entry.userName}</span>
-                    <span className="inline-flex items-center gap-1">
+                  {entry.changes && entry.changes.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {entry.changes.map((chg, idx) => (
+                        <div
+                          key={`${entry.id}-c-${idx}`}
+                          className="text-xs leading-relaxed flex flex-wrap items-baseline gap-1.5"
+                        >
+                          <span className="font-semibold text-sky-300 bg-sky-500/10 border border-sky-400/20 px-1.5 py-0.5 rounded-md shrink-0">
+                            {chg.field}
+                          </span>
+                          {chg.from !== undefined && chg.to !== undefined ? (
+                            <span className="inline-flex flex-wrap items-center gap-1.5 text-slate-200 break-words">
+                              <span
+                                className={
+                                  chg.from === 'Empty' || chg.from === 'None'
+                                    ? 'text-slate-500 italic'
+                                    : 'text-slate-400 line-through decoration-slate-500/70'
+                                }
+                              >
+                                {chg.from}
+                              </span>
+                              <ArrowRight className="w-3 h-3 text-slate-500 shrink-0" />
+                              <span
+                                className={
+                                  chg.to === 'Cleared' || chg.to === 'Removed'
+                                    ? 'text-amber-300/90 italic'
+                                    : 'text-white font-medium'
+                                }
+                              >
+                                {chg.to}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-100 font-medium break-words">
+                              {chg.to ?? chg.from ?? ''}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-100 leading-snug">{entry.action}</p>
+                  )}
+
+                  <div className="pt-1.5 border-t border-white/[0.05] flex items-center justify-between gap-2 text-xs text-slate-500">
+                    <span className="font-medium text-slate-300">{entry.userName}</span>
+                    <span
+                      className="inline-flex items-center gap-1"
+                      title={formatDateTime(entry.timestamp)}
+                    >
                       <Clock className="w-3 h-3" />
-                      {formatRelativeTime(entry.timestamp)}
+                      <span>{formatRelativeTime(entry.timestamp)}</span>
+                      <span className="text-slate-600">&bull;</span>
+                      <span>{formatDateTime(entry.timestamp)}</span>
                     </span>
                   </div>
                 </div>

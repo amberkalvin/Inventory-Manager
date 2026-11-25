@@ -1,7 +1,7 @@
-import { STATUS_META, STATUS_ORDER, type VehicleStatus } from '../types/vehicle';
+import { ACTIVE_STATUS_ORDER, STATUS_META, type VehicleStatus } from '../types/vehicle';
 import { triggerHaptic } from '../services/nativeBridge';
 
-export type StatusFilter = 'all_active' | 'all' | VehicleStatus;
+export type StatusFilter = 'all_active' | Exclude<VehicleStatus, 'ready'>;
 
 interface StatusSummaryBarProps {
   counts: Record<VehicleStatus, number>;
@@ -23,7 +23,7 @@ export function StatusSummaryBar({
 
   return (
     <section aria-label="Inventory status counts" className="w-full">
-      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 sm:grid sm:grid-cols-4 lg:grid-cols-7">
+      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 sm:grid sm:grid-cols-3 lg:grid-cols-5">
         <button
           id="filter-all-active"
           type="button"
@@ -45,7 +45,7 @@ export function StatusSummaryBar({
           </div>
         </button>
 
-        {STATUS_ORDER.map((status) => {
+        {ACTIVE_STATUS_ORDER.map((status) => {
           const meta = STATUS_META[status];
           const isSelected = selected === status;
           return (
@@ -53,7 +53,9 @@ export function StatusSummaryBar({
               key={status}
               id={`filter-${status}`}
               type="button"
-              onClick={() => handlePick(isSelected ? 'all_active' : status)}
+              onClick={() =>
+                handlePick(isSelected ? 'all_active' : (status as Exclude<VehicleStatus, 'ready'>))
+              }
               style={
                 isSelected
                   ? {

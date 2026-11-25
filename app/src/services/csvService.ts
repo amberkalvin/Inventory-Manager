@@ -1,4 +1,12 @@
-import { STATUS_ORDER, type Vehicle, type VehicleStatus } from '../types/vehicle';
+import {
+  isVehicleArchived,
+  STATUS_ORDER,
+  VEHICLE_CHECKLIST_ITEMS,
+  type Vehicle,
+  type VehicleChecklist,
+  type VehicleStatus,
+} from '../types/vehicle';
+import type { NewVehicleInput } from './vehicleService';
 import { exportTextFile } from './nativeBridge';
 
 const CSV_HEADERS = [
@@ -11,6 +19,9 @@ const CSV_HEADERS = [
   'Color',
   'Mileage',
   'Status',
+  'Archived',
+  'Archived At',
+  'Checklist',
   'Location',
   'Repair Notes',
   'Estimated Cost',
@@ -43,6 +54,11 @@ export function exportVehiclesToCsv(vehicles: Vehicle[]): void {
         v.color ?? '',
         v.mileage ?? '',
         v.status,
+        isVehicleArchived(v) ? 'Yes' : 'No',
+        v.archivedAt ?? '',
+        VEHICLE_CHECKLIST_ITEMS.filter((item) => Boolean(v.checklist?.[item.key]))
+          .map((item) => item.label)
+          .join('; '),
         v.location ?? '',
         v.repairNotes ?? '',
         v.estimatedCost ?? '',
@@ -94,12 +110,11 @@ function normalizeStatus(raw: string | undefined): VehicleStatus {
   if (val.includes('major')) return 'major_repair';
   if (val.includes('minor') || val.includes('repair') || val.includes('recon')) return 'minor_repair';
   if (val.includes('off') || val.includes('body') || val.includes('shop')) return 'offsite';
-  if (val.includes('ready') || val.includes('front') || val.includes('lot')) return 'ready';
-  if (val.includes('sold') || val.includes('deliver')) return 'sold';
+  if (val.includes('ready') || val.includes('front') || val.includes('archiv')) return 'ready';
   return 'incoming';
 }
 
-export function parseCsvVehicles(csvText: string): Omit<Vehicle, 'id' | 'createdAt' | 'updatedAt' | 'updatedBy'>[] {
+export function parseCsvVehicles(csvText: string): NewVehicleInput[] {
   const lines = csvText
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
@@ -125,8 +140,9 @@ export function parseCsvVehicles(csvText: string): Omit<Vehicle, 'id' | 'created
   const iCost = col('estimatedcost', 'cost', 'est');
   const iEta = col('expectedreturndate', 'eta', 'return');
   const iAssigned = col('assignedto', 'assigned', 'owner', 'tech');
+  const iChecklist = col('checklist', 'prep');
 
-  const out: Omit<Vehicle, 'id' | 'createdAt' | 'updatedAt' | 'updatedBy'>[] = [];
+  const out: NewVehicleInput[] = [];
   for (let r = 1; r < lines.length; r++) {
     const cells = parseCsvLine(lines[r]);
     const get = (idx: number) => (idx >= 0 ? (cells[idx] ?? '').trim() : '');
@@ -138,6 +154,17 @@ export function parseCsvVehicles(csvText: string): Omit<Vehicle, 'id' | 'created
     const yearNum = Number(get(iYear));
     const milesNum = Number(get(iMiles).replace(/[^0-9.]/g, ''));
     const costNum = Number(get(iCost).replace(/[^0-9.]/g, ''));
+    const rawChecklist = get(iChecklist).toLowerCase();
+    let checklist: VehicleChecklist | undefined;
+    if (rawChecklist) {
+      const parsedChecklist: VehicleChecklist = {};
+      for (const item of VEHICLE_CHECKLIST_ITEMS) {
+        if (rawChecklist.includes(item.key) || rawChecklist.includes(item.label.toLowerCase())) {
+          parsedChecklist[item.key] = true;
+        }
+      }
+      if (Object.keys(parsedChecklist).length > 0) checklist = parsedChecklist;
+    }
 
     out.push({
       stockNumber: stock,
@@ -154,6 +181,7 @@ export function parseCsvVehicles(csvText: string): Omit<Vehicle, 'id' | 'created
       estimatedCost: Number.isFinite(costNum) && costNum > 0 ? Math.round(costNum) : undefined,
       expectedReturnDate: get(iEta) || undefined,
       assignedTo: get(iAssigned) || undefined,
+      checklist,
     });
   }
 

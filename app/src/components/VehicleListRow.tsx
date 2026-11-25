@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { ArrowRight, ChevronDown, MapPin } from 'lucide-react';
+import { Archive, ArrowRight, CheckSquare, ChevronDown, MapPin, RotateCcw } from 'lucide-react';
 import {
+  isVehicleArchived,
   STATUS_META,
   STATUS_ORDER,
+  VEHICLE_CHECKLIST_ITEMS,
   type Vehicle,
   type VehicleStatus,
 } from '../types/vehicle';
@@ -26,6 +28,10 @@ export function VehicleListRow({
   const [menuOpen, setMenuOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
   const meta = STATUS_META[vehicle.status];
+  const archived = isVehicleArchived(vehicle);
+  const checklistDone = VEHICLE_CHECKLIST_ITEMS.filter((item) =>
+    Boolean(vehicle.checklist?.[item.key])
+  ).length;
 
   const handleStatusUpdate = async (
     e: React.MouseEvent,
@@ -91,8 +97,17 @@ export function VehicleListRow({
           {vehicle.color && (
             <span className="hidden md:inline">{vehicle.color}</span>
           )}
+          {checklistDone > 0 && (
+            <span className="inline-flex items-center gap-1 font-mono-code text-emerald-300/90">
+              <CheckSquare className="w-3 h-3 shrink-0" />
+              {checklistDone}/{VEHICLE_CHECKLIST_ITEMS.length}
+            </span>
+          )}
           <span className="text-slate-500 truncate">
-            {formatRelativeTime(vehicle.updatedAt)} · {vehicle.updatedBy}
+            {archived && vehicle.archivedAt
+              ? `Archived ${formatRelativeTime(vehicle.archivedAt)}`
+              : formatRelativeTime(vehicle.updatedAt)}{' '}
+            · {vehicle.updatedBy}
           </span>
         </div>
       </div>
@@ -122,7 +137,7 @@ export function VehicleListRow({
           {menuOpen && (
             <div
               onClick={(e) => e.stopPropagation()}
-              className="absolute right-0 mt-1.5 w-44 rounded-xl bg-[#182030] border border-white/15 shadow-2xl p-1.5 z-30"
+              className="absolute right-0 mt-1.5 w-52 rounded-xl bg-[#182030] border border-white/15 shadow-2xl p-1.5 z-30"
             >
               {STATUS_ORDER.map((st) => {
                 const stMeta = STATUS_META[st];
@@ -132,17 +147,24 @@ export function VehicleListRow({
                     key={st}
                     type="button"
                     onClick={(e) => handleStatusUpdate(e, st)}
-                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-left cursor-pointer transition-colors ${
+                    className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-left cursor-pointer transition-colors ${
                       active
                         ? 'bg-white/10 text-white'
                         : 'text-slate-300 hover:bg-white/[0.06]'
                     }`}
                   >
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: stMeta.color }}
-                    />
-                    {stMeta.label}
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: stMeta.color }}
+                      />
+                      {stMeta.label}
+                    </span>
+                    {st === 'ready' && !archived && (
+                      <span className="text-[10px] text-emerald-400/90 font-semibold">
+                        Archive
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -155,10 +177,19 @@ export function VehicleListRow({
           disabled={updating}
           onClick={(e) => handleStatusUpdate(e, meta.nextStatus)}
           title={meta.nextLabel}
-          className="hidden sm:inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-sky-500/20 hover:text-sky-300 text-slate-200 border border-white/[0.08] transition-colors cursor-pointer disabled:opacity-50"
+          className={`hidden sm:inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors cursor-pointer disabled:opacity-50 ${
+            meta.nextStatus === 'ready'
+              ? 'bg-emerald-500/12 hover:bg-emerald-500/22 text-emerald-300 border-emerald-400/25'
+              : 'bg-white/[0.06] hover:bg-sky-500/20 hover:text-sky-300 text-slate-200 border-white/[0.08]'
+          }`}
         >
+          {archived ? (
+            <RotateCcw className="w-3.5 h-3.5" />
+          ) : meta.nextStatus === 'ready' ? (
+            <Archive className="w-3.5 h-3.5" />
+          ) : null}
           <span>{updating ? '…' : meta.nextLabel}</span>
-          <ArrowRight className="w-3.5 h-3.5" />
+          {!archived && meta.nextStatus !== 'ready' && <ArrowRight className="w-3.5 h-3.5" />}
         </button>
       </div>
     </article>

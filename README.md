@@ -14,11 +14,11 @@ Once published to GitHub with Pages enabled (`Settings → Pages → Source: Git
 
 ## Core Features
 
-- **Tappable Status Summary Bar:** Live counters for **Active Lot**, **Incoming**, **Minor Repairs**, **Major Repairs**, **Offsite**, **Frontline Ready**, and **Sold**.
+- **Tappable Status Summary Bar & Archive:** Live counters for **Active Lot**, **Incoming**, **Minor Repairs**, **Major Repairs**, and **Offsite**, plus a dedicated **Archive** where vehicles automatically move when marked **Frontline Ready**.
 - **Instant Search:** Filter immediately by Stock #, last 6 of VIN, Year/Make/Model, Location, Assigned Team Member, or Repair Notes.
 - **One-Tap Status Progression:** Move any unit to the next stage straight from the card or jump to any status via the quick dropdown.
 - **NHTSA VIN Auto-Decode:** Enter a 17-character VIN in the Quick-Add modal or Detail Drawer to auto-fill Year, Make, Model, and Trim.
-- **Per-User Activity History:** Every status move, location update, assignment, and repair note change is recorded automatically with user name and timestamp.
+- **Per-User Field-Level Activity History:** Every change made to any vehicle field (status, location, mileage, cost, ETA, notes, VIN/specs, photo, archive/restore) is logged automatically with exact before/after values, user name, and timestamp.
 - **Real-Time Sync + Offline Lot Mode:** Works out of the box in Local Team Mode and connects to **Firebase Firestore + Auth** (with IndexedDB offline caching) in 5 minutes via `firebase/FIREBASE_SETUP.md` or right inside **Settings → Cloud Sync**.
 - **One-Click CSV Backup & Optional Import:** Export your full lot inventory as a `.csv` (with native iOS/Android Share Sheets inside `.APK`/`.IPA`) or import vehicles from a CSV anytime.
 

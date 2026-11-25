@@ -3,8 +3,23 @@ export type VehicleStatus =
   | 'minor_repair'
   | 'major_repair'
   | 'offsite'
-  | 'ready'
-  | 'sold';
+  | 'ready';
+
+export type VehicleChecklistKey = 'inspection' | 'detail' | 'video' | 'pictures';
+
+export type VehicleChecklist = Partial<Record<VehicleChecklistKey, boolean>>;
+
+export interface ChecklistItemDef {
+  key: VehicleChecklistKey;
+  label: string;
+}
+
+export const VEHICLE_CHECKLIST_ITEMS: ChecklistItemDef[] = [
+  { key: 'inspection', label: 'Inspection' },
+  { key: 'detail', label: 'Detail' },
+  { key: 'video', label: 'Video' },
+  { key: 'pictures', label: 'Pictures' },
+];
 
 export interface Vehicle {
   id: string;
@@ -17,15 +32,24 @@ export interface Vehicle {
   color?: string;
   mileage?: number;
   status: VehicleStatus;
+  archived?: boolean;
+  archivedAt?: string; // ISO timestamp
   location?: string;
   repairNotes?: string;
   estimatedCost?: number;
   expectedReturnDate?: string; // ISO YYYY-MM-DD
   assignedTo?: string;
+  checklist?: VehicleChecklist;
   photoUrl?: string; // Compressed JPEG data URL or hosted image URL
   updatedAt: string; // ISO timestamp
   updatedBy: string;
   createdAt: string; // ISO timestamp
+}
+
+export interface HistoryChange {
+  field: string;
+  from?: string;
+  to?: string;
 }
 
 export interface HistoryEntry {
@@ -34,6 +58,7 @@ export interface HistoryEntry {
   userEmail: string;
   userName: string;
   action: string;
+  changes?: HistoryChange[];
 }
 
 export interface StatusMeta {
@@ -47,14 +72,34 @@ export interface StatusMeta {
   nextLabel: string;
 }
 
+export const ACTIVE_STATUS_ORDER: VehicleStatus[] = [
+  'incoming',
+  'minor_repair',
+  'major_repair',
+  'offsite',
+];
+
 export const STATUS_ORDER: VehicleStatus[] = [
   'incoming',
   'minor_repair',
   'major_repair',
   'offsite',
   'ready',
-  'sold',
 ];
+
+export function isVehicleArchived(vehicle: Pick<Vehicle, 'status' | 'archived'>): boolean {
+  return Boolean(vehicle.archived || vehicle.status === 'ready');
+}
+
+export function normalizeVehicleStatus(raw: unknown): VehicleStatus {
+  const val = String(raw ?? '').toLowerCase().trim();
+  if (val === 'incoming' || val === 'minor_repair' || val === 'major_repair' || val === 'offsite' || val === 'ready') {
+    return val;
+  }
+  // Gracefully map any legacy "sold" records into archived Frontline Ready
+  if (val === 'sold') return 'ready';
+  return 'incoming';
+}
 
 export const STATUS_META: Record<VehicleStatus, StatusMeta> = {
   incoming: {
@@ -75,7 +120,7 @@ export const STATUS_META: Record<VehicleStatus, StatusMeta> = {
     bgTint: 'rgba(251, 191, 36, 0.14)',
     borderTint: 'rgba(251, 191, 36, 0.30)',
     nextStatus: 'ready',
-    nextLabel: 'Mark Ready',
+    nextLabel: 'Frontline Ready',
   },
   major_repair: {
     key: 'major_repair',
@@ -95,7 +140,7 @@ export const STATUS_META: Record<VehicleStatus, StatusMeta> = {
     bgTint: 'rgba(251, 146, 60, 0.14)',
     borderTint: 'rgba(251, 146, 60, 0.30)',
     nextStatus: 'ready',
-    nextLabel: 'Back & Ready',
+    nextLabel: 'Frontline Ready',
   },
   ready: {
     key: 'ready',
@@ -104,18 +149,8 @@ export const STATUS_META: Record<VehicleStatus, StatusMeta> = {
     color: '#34D399',
     bgTint: 'rgba(52, 211, 153, 0.14)',
     borderTint: 'rgba(52, 211, 153, 0.30)',
-    nextStatus: 'sold',
-    nextLabel: 'Mark Sold',
-  },
-  sold: {
-    key: 'sold',
-    label: 'Sold',
-    shortLabel: 'Sold',
-    color: '#94A3B8',
-    bgTint: 'rgba(148, 163, 184, 0.14)',
-    borderTint: 'rgba(148, 163, 184, 0.28)',
     nextStatus: 'incoming',
-    nextLabel: 'Re-Open',
+    nextLabel: 'Restore',
   },
 };
 

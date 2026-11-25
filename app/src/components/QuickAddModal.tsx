@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Loader2, Search, X } from 'lucide-react';
-import { STATUS_META, STATUS_ORDER, type VehicleStatus } from '../types/vehicle';
+import { Archive, Loader2, Search, X } from 'lucide-react';
+import { ACTIVE_STATUS_ORDER, STATUS_META, type VehicleStatus } from '../types/vehicle';
 import type { NewVehicleInput } from '../services/vehicleService';
 import { decodeVin } from '../services/vinDecoder';
 import { triggerHaptic } from '../services/nativeBridge';
@@ -39,6 +39,8 @@ export function QuickAddModal({
   const [repairNotes, setRepairNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+
+  const readyMeta = STATUS_META.ready;
 
   const handleDecodeVin = async () => {
     triggerHaptic('light');
@@ -183,12 +185,12 @@ export function QuickAddModal({
           </div>
 
           {/* Status Pill Selector */}
-          <div>
-            <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+          <div className="space-y-2">
+            <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               Initial Status
             </span>
-            <div className="grid grid-cols-3 gap-1.5">
-              {STATUS_ORDER.map((st) => {
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              {ACTIVE_STATUS_ORDER.map((st) => {
                 const stMeta = STATUS_META[st];
                 const active = st === status;
                 return (
@@ -219,6 +221,35 @@ export function QuickAddModal({
                 );
               })}
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setStatus('ready');
+              }}
+              style={
+                status === 'ready'
+                  ? {
+                      backgroundColor: readyMeta.bgTint,
+                      borderColor: readyMeta.borderTint,
+                      color: readyMeta.color,
+                    }
+                  : undefined
+              }
+              className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                status === 'ready'
+                  ? ''
+                  : 'bg-[#0E121A] border-white/[0.08] text-slate-400 hover:border-emerald-400/35 hover:text-emerald-300'
+              }`}
+            >
+              <Archive className="w-3.5 h-3.5" />
+              <span>Frontline Ready (Add Directly to Archive)</span>
+            </button>
+            {status === 'ready' && (
+              <p className="text-xs text-emerald-300/90">
+                Vehicles added as Frontline Ready are saved straight to the Archive.
+              </p>
+            )}
           </div>
 
           {/* Core Vehicle Fields */}
