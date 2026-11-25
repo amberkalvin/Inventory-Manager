@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { Delete, Lock } from 'lucide-react';
 import { triggerHaptic } from '../services/nativeBridge';
 
-const SHOP_PIN = '1234';
-const SHOP_PIN_STORAGE_KEY = 'im_shop_pin_v1';
+const SHOP_PIN = '4115';
+const SHOP_PIN_STORAGE_KEY = 'im_shop_pin_v2';
 
 export function isShopPinUnlocked(): boolean {
   try {

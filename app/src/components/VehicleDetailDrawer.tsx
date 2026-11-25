@@ -433,16 +433,16 @@ export function VehicleDetailDrawer({
               </div>
             </div>
 
-            {/* Repair Notes */}
+            {/* Needs / Repair Notes */}
             <div>
               <label className="block text-xs font-medium text-slate-400 mb-1">
-                Repair &amp; Recon Notes
+                Needs / Repair Notes
               </label>
               <textarea
                 rows={3}
                 value={repairNotes}
                 onChange={(e) => setRepairNotes(e.target.value)}
-                placeholder="Notes on repairs, parts on order, body shop, keys..."
+                placeholder="What this vehicle needs (tune up, parts on order, body shop, keys...)"
                 className="field-input resize-none"
               />
             </div>

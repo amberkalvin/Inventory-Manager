@@ -405,12 +405,12 @@ export function QuickAddModal({
 
           <div>
             <label htmlFor="add-notes" className="block text-xs font-medium text-slate-400 mb-1">
-              Repair &amp; Recon Notes
+              Needs / Repair Notes
             </label>
             <textarea
               id="add-notes"
               rows={3}
-              placeholder="List repairs, body shop notes, key count, or recon steps..."
+              placeholder="What this vehicle needs (tune up, body shop, key count, recon steps...)"
               value={repairNotes}
               onChange={(e) => setRepairNotes(e.target.value)}
               className="field-input resize-none"

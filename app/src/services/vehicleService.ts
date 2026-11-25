@@ -176,16 +176,35 @@ function normalizeVehicleRecord(raw: Record<string, unknown>, fallbackIndex = 0)
         : updatedAt
       : undefined,
     location: normalizeOptionalString(raw.location),
-    repairNotes: normalizeOptionalString(raw.repairNotes),
+    repairNotes:
+      normalizeOptionalString(raw.repairNotes) ?? normalizeOptionalString(raw.needs),
     estimatedCost: parseOptionalNumber(raw.estimatedCost),
-    expectedReturnDate: normalizeOptionalString(raw.expectedReturnDate),
-    assignedTo: normalizeOptionalString(raw.assignedTo),
+    expectedReturnDate:
+      normalizeOptionalString(raw.expectedReturnDate) ??
+      normalizeOptionalString(raw.dateSent),
+    assignedTo:
+      normalizeOptionalString(raw.assignedTo) ?? normalizeOptionalString(raw.contact),
     checklist: normalizeChecklist(raw.checklist),
     photoUrl: normalizeOptionalString(raw.photoUrl),
     history: normalizeHistoryEntries(raw.history),
     updatedAt,
     updatedBy: normalizeOptionalString(raw.updatedBy) ?? 'Team',
     createdAt,
+  };
+}
+
+function serializeVehicleForRemote(v: Vehicle): Record<string, unknown> {
+  return {
+    ...v,
+    stockNumber: v.stockNumber ?? '',
+    color: v.color ?? '',
+    location: v.location ?? '',
+    needs: v.repairNotes ?? '',
+    repairNotes: v.repairNotes ?? '',
+    dateSent: v.expectedReturnDate ?? '',
+    expectedReturnDate: v.expectedReturnDate ?? '',
+    contact: v.assignedTo ?? '',
+    assignedTo: v.assignedTo ?? '',
   };
 }
 
@@ -263,7 +282,10 @@ function extractReadableError(rawText: string, status: number): string {
   return `Sync error (HTTP ${status}).`;
 }
 
-function parseRemoteVehicleArray(rawText: string, status: number): Vehicle[] {
+function parseRemoteVehicleRecords(
+  rawText: string,
+  status: number
+): Record<string, unknown>[] {
   const trimmed = rawText.trim();
   if (!trimmed) return [];
 
@@ -293,9 +315,9 @@ function parseRemoteVehicleArray(rawText: string, status: number): Vehicle[] {
     throw new Error('Unexpected response format from Google Apps Script.');
   }
 
-  return items
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
-    .map((item, idx) => normalizeVehicleRecord(item, idx));
+  return items.filter((item): item is Record<string, unknown> =>
+    Boolean(item && typeof item === 'object')
+  );
 }
 
 export async function fetchVehiclesFromRemote(): Promise<Vehicle[] | null> {
@@ -324,18 +346,40 @@ export async function fetchVehiclesFromRemote(): Promise<Vehicle[] | null> {
     if (!res.ok) {
       throw new Error(extractReadableError(text, res.status));
     }
-    const remoteVehicles = parseRemoteVehicleArray(text, res.status);
+    const rawRecords = parseRemoteVehicleRecords(text, res.status);
 
     // Avoid overwriting local optimistic state if a write happened during this poll
     if (pendingWrites > 0 || pollVersion !== mutationVersion) {
       return null;
     }
 
+    const existingVehiclesById = new Map(readCachedVehicles().map((v) => [v.id, v]));
     const existingHistory = readCachedHistory();
     const mergedHistory: Record<string, HistoryEntry[]> = { ...existingHistory };
-    const hydrated = remoteVehicles.map((v) => {
-      const localEntries = existingHistory[v.id] ?? [];
-      const remoteEntries = v.history ?? [];
+
+    const hydrated = rawRecords.map((raw, idx) => {
+      const normalized = normalizeVehicleRecord(raw, idx);
+      const cached = existingVehiclesById.get(normalized.id);
+
+      // Preserve fields that the Google Sheet doesn't have columns for yet
+      const merged: Vehicle = cached
+        ? {
+            ...normalized,
+            make: 'make' in raw ? normalized.make : cached.make,
+            trim: 'trim' in raw ? normalized.trim : cached.trim,
+            vin: 'vin' in raw ? normalized.vin : cached.vin,
+            mileage: 'mileage' in raw ? normalized.mileage : cached.mileage,
+            estimatedCost:
+              'estimatedCost' in raw ? normalized.estimatedCost : cached.estimatedCost,
+            checklist: 'checklist' in raw ? normalized.checklist : cached.checklist,
+            photoUrl: 'photoUrl' in raw ? normalized.photoUrl : cached.photoUrl,
+            updatedBy: 'updatedBy' in raw ? normalized.updatedBy : cached.updatedBy,
+            createdAt: 'createdAt' in raw ? normalized.createdAt : cached.createdAt,
+          }
+        : normalized;
+
+      const localEntries = existingHistory[merged.id] ?? [];
+      const remoteEntries = merged.history ?? [];
       if (remoteEntries.length > 0) {
         const byId = new Map<string, HistoryEntry>();
         for (const e of localEntries) byId.set(e.id, e);
@@ -343,13 +387,13 @@ export async function fetchVehiclesFromRemote(): Promise<Vehicle[] | null> {
         const combined = Array.from(byId.values()).sort((a, b) =>
           b.timestamp.localeCompare(a.timestamp)
         );
-        mergedHistory[v.id] = combined;
-        return { ...v, history: combined };
+        mergedHistory[merged.id] = combined;
+        return { ...merged, history: combined };
       }
       if (localEntries.length > 0) {
-        return { ...v, history: localEntries };
+        return { ...merged, history: localEntries };
       }
-      return v;
+      return merged;
     });
 
     writeCachedHistory(mergedHistory);
@@ -392,7 +436,7 @@ async function postVehiclesToRemote(vehicles: Vehicle[]): Promise<void> {
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
       },
-      body: JSON.stringify(vehicles),
+      body: JSON.stringify(vehicles.map(serializeVehicleForRemote)),
     });
     const text = await res.text();
     if (!res.ok) {
