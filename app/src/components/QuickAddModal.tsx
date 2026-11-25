@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Archive, Loader2, Search, X } from 'lucide-react';
-import { ACTIVE_STATUS_ORDER, STATUS_META, type VehicleStatus } from '../types/vehicle';
+import { ChevronDown, Loader2, Search, X } from 'lucide-react';
+import { STATUS_META, STATUS_ORDER, type VehicleStatus } from '../types/vehicle';
 import type { NewVehicleInput } from '../services/vehicleService';
 import { decodeVin } from '../services/vinDecoder';
 import { triggerHaptic } from '../services/nativeBridge';
@@ -37,7 +37,7 @@ export function QuickAddModal({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
-  const readyMeta = STATUS_META.ready;
+  const currentStatusMeta = STATUS_META[status];
 
   const handleDecodeVin = async () => {
     triggerHaptic('light');
@@ -180,72 +180,62 @@ export function QuickAddModal({
             )}
           </div>
 
-          {/* Status Pill Selector */}
+          {/* Status Dropdown */}
           <div className="space-y-2">
-            <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              Initial Status
-            </span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-              {ACTIVE_STATUS_ORDER.map((st) => {
-                const stMeta = STATUS_META[st];
-                const active = st === status;
-                return (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={() => {
-                      triggerHaptic('light');
-                      setStatus(st);
-                    }}
-                    style={
-                      active
-                        ? {
-                            backgroundColor: stMeta.bgTint,
-                            borderColor: stMeta.borderTint,
-                            color: stMeta.color,
-                          }
-                        : undefined
-                    }
-                    className={`px-2.5 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                      active
-                        ? ''
-                        : 'bg-[#0E121A] border-white/[0.08] text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    {stMeta.shortLabel}
-                  </button>
-                );
-              })}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                setStatus('ready');
-              }}
-              style={
-                status === 'ready'
-                  ? {
-                      backgroundColor: readyMeta.bgTint,
-                      borderColor: readyMeta.borderTint,
-                      color: readyMeta.color,
-                    }
-                  : undefined
-              }
-              className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                status === 'ready'
-                  ? ''
-                  : 'bg-[#0E121A] border-white/[0.08] text-slate-400 hover:border-emerald-400/35 hover:text-emerald-300'
-              }`}
+            <label
+              htmlFor="add-status-select"
+              className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400"
             >
-              <Archive className="w-3.5 h-3.5" />
-              <span>Frontline Ready (Add Directly to Archive)</span>
-            </button>
+              Initial Status
+            </label>
+            <div className="relative">
+              <span
+                aria-hidden="true"
+                className="w-2.5 h-2.5 rounded-full absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                style={{ backgroundColor: currentStatusMeta.color }}
+              />
+              <select
+                id="add-status-select"
+                value={status}
+                onChange={(e) => {
+                  triggerHaptic('light');
+                  setStatus(e.target.value as VehicleStatus);
+                }}
+                style={{
+                  borderColor: currentStatusMeta.borderTint,
+                }}
+                className="field-input pl-9 pr-10 appearance-none font-semibold text-white cursor-pointer"
+              >
+                {STATUS_ORDER.map((st) => (
+                  <option key={st} value={st} className="bg-[#121721] text-white">
+                    {st === 'ready'
+                      ? `${STATUS_META[st].label} (Archive)`
+                      : STATUS_META[st].label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
             {status === 'ready' && (
               <p className="text-xs text-emerald-300/90">
                 Vehicles added as Frontline Ready are saved straight to the Archive.
               </p>
             )}
+          </div>
+
+          {/* Needs / Repair Notes */}
+          <div>
+            <label htmlFor="add-notes" className="block text-xs font-semibold text-slate-200 mb-1.5">
+              Needs / Repair Notes
+            </label>
+            <textarea
+              id="add-notes"
+              rows={3}
+              placeholder="What this vehicle needs (tune up, body shop, key count, recon steps...)"
+              value={repairNotes}
+              onChange={(e) => setRepairNotes(e.target.value)}
+              className="field-input resize-none text-white placeholder:text-slate-500"
+            />
           </div>
 
           {/* Core Vehicle Fields */}
@@ -386,20 +376,6 @@ export function QuickAddModal({
                 className="field-input"
               />
             </div>
-          </div>
-
-          <div>
-            <label htmlFor="add-notes" className="block text-xs font-medium text-slate-400 mb-1">
-              Needs / Repair Notes
-            </label>
-            <textarea
-              id="add-notes"
-              rows={3}
-              placeholder="What this vehicle needs (tune up, body shop, key count, recon steps...)"
-              value={repairNotes}
-              onChange={(e) => setRepairNotes(e.target.value)}
-              className="field-input resize-none"
-            />
           </div>
 
           {formError && (

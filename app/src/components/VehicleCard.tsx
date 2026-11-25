@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import {
-  Archive,
-  ArrowRight,
-  Building2,
   CalendarClock,
   CheckSquare,
   ChevronDown,
+  MapPin,
   RotateCcw,
   Wrench,
 } from 'lucide-react';
@@ -114,6 +112,7 @@ export function VehicleCard({
           <div className="relative shrink-0">
             <button
               type="button"
+              disabled={updating}
               onClick={(e) => {
                 e.stopPropagation();
                 triggerHaptic('light');
@@ -124,10 +123,10 @@ export function VehicleCard({
                 backgroundColor: meta.bgTint,
                 borderColor: meta.borderTint,
               }}
-              className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border cursor-pointer disabled:opacity-50"
               aria-label={`Change status from ${meta.label}`}
             >
-              <span>{meta.shortLabel}</span>
+              <span>{updating ? '…' : meta.shortLabel}</span>
               <ChevronDown className="w-3.5 h-3.5 opacity-80" />
             </button>
 
@@ -179,20 +178,28 @@ export function VehicleCard({
           </div>
         </div>
 
+        {/* Bright, Easy-to-Read Needed Repairs */}
+        {vehicle.repairNotes && (
+          <p className="mt-2.5 text-[13px] font-medium text-slate-100 leading-snug line-clamp-3 flex items-start gap-1.5">
+            <Wrench className="w-3.5 h-3.5 mt-0.5 text-amber-300 shrink-0" />
+            <span>{vehicle.repairNotes}</span>
+          </p>
+        )}
+
         {/* Metadata Strip */}
         <div className="mt-2.5 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-xs text-slate-400">
           {vehicle.offsiteLocation && (
-            <span className="inline-flex items-center gap-1.5 text-orange-300/90 font-medium">
-              <Building2 className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate max-w-[180px]">{vehicle.offsiteLocation}</span>
+            <span className="inline-flex items-center gap-1.5 text-orange-300 font-semibold">
+              <MapPin className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate max-w-[200px]">{vehicle.offsiteLocation}</span>
             </span>
           )}
           {vehicle.mileage !== undefined && (
-            <span className="font-mono-code text-slate-400">
+            <span className="font-mono-code text-slate-300/90">
               {formatMileage(vehicle.mileage)}
             </span>
           )}
-          {vehicle.color && <span>{vehicle.color}</span>}
+          {vehicle.color && <span className="text-slate-300/80">{vehicle.color}</span>}
           {vehicle.expectedReturnDate && !archived && (
             <span className="inline-flex items-center gap-1 text-amber-300/90">
               <CalendarClock className="w-3.5 h-3.5 shrink-0" />
@@ -206,17 +213,9 @@ export function VehicleCard({
             </span>
           )}
         </div>
-
-        {/* Repair / Condition Notes */}
-        {vehicle.repairNotes && (
-          <p className="mt-2.5 text-xs text-slate-400 leading-relaxed line-clamp-2 flex items-start gap-1.5">
-            <Wrench className="w-3.5 h-3.5 mt-0.5 text-slate-500 shrink-0" />
-            <span>{vehicle.repairNotes}</span>
-          </p>
-        )}
       </div>
 
-      {/* Bottom Action Row: Accountability + One-Tap Advance */}
+      {/* Bottom Row: Accountability (+ Restore button when in Archive) */}
       <div className="pt-2.5 border-t border-white/[0.06] flex items-center justify-between gap-2">
         <span className="text-[11px] text-slate-500 truncate">
           {archived && vehicle.archivedAt
@@ -225,24 +224,17 @@ export function VehicleCard({
           <strong className="text-slate-300 font-medium">{vehicle.updatedBy}</strong>
         </span>
 
-        <button
-          type="button"
-          disabled={updating}
-          onClick={(e) => handleStatusUpdate(e, meta.nextStatus)}
-          className={`shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors cursor-pointer disabled:opacity-50 ${
-            meta.nextStatus === 'ready'
-              ? 'bg-emerald-500/12 hover:bg-emerald-500/22 text-emerald-300 border-emerald-400/25'
-              : 'bg-white/[0.06] hover:bg-sky-500/20 hover:text-sky-300 text-slate-200 border-white/[0.08]'
-          }`}
-        >
-          {archived ? (
+        {archived && (
+          <button
+            type="button"
+            disabled={updating}
+            onClick={(e) => handleStatusUpdate(e, meta.nextStatus)}
+            className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-sky-500/20 hover:text-sky-300 text-slate-200 border border-white/[0.08] transition-colors cursor-pointer disabled:opacity-50"
+          >
             <RotateCcw className="w-3.5 h-3.5" />
-          ) : meta.nextStatus === 'ready' ? (
-            <Archive className="w-3.5 h-3.5" />
-          ) : null}
-          <span>{updating ? 'Saving…' : meta.nextLabel}</span>
-          {!archived && meta.nextStatus !== 'ready' && <ArrowRight className="w-3.5 h-3.5" />}
-        </button>
+            <span>{updating ? 'Saving…' : meta.nextLabel}</span>
+          </button>
+        )}
       </div>
     </article>
   );

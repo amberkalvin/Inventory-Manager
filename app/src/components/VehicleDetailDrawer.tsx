@@ -4,6 +4,7 @@ import {
   Archive,
   ArrowRight,
   Check,
+  ChevronDown,
   Clock,
   Copy,
   History,
@@ -14,9 +15,9 @@ import {
   X,
 } from 'lucide-react';
 import {
-  ACTIVE_STATUS_ORDER,
   isVehicleArchived,
   STATUS_META,
+  STATUS_ORDER,
   VEHICLE_CHECKLIST_ITEMS,
   type HistoryEntry,
   type Vehicle,
@@ -117,7 +118,7 @@ export function VehicleDetailDrawer({
   const wasArchived = isVehicleArchived(vehicle);
   const willArchive = !wasArchived && status === 'ready';
   const willRestore = wasArchived && status !== 'ready';
-  const readyMeta = STATUS_META.ready;
+  const currentStatusMeta = STATUS_META[status];
   const completedChecklistCount = VEHICLE_CHECKLIST_ITEMS.filter((item) =>
     Boolean(vehicle.checklist?.[item.key])
   ).length;
@@ -348,71 +349,43 @@ export function VehicleDetailDrawer({
               }}
             />
 
-            {/* Quick Status Picker */}
+            {/* Current Status Dropdown */}
             <div className="space-y-2">
-              <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                Current Status
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                {ACTIVE_STATUS_ORDER.map((st) => {
-                  const meta = STATUS_META[st];
-                  const active = st === status;
-                  return (
-                    <button
-                      key={st}
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('light');
-                        markDirty('status');
-                        setStatus(st);
-                      }}
-                      style={
-                        active
-                          ? {
-                              backgroundColor: meta.bgTint,
-                              borderColor: meta.borderTint,
-                              color: meta.color,
-                            }
-                          : undefined
-                      }
-                      className={`px-2.5 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                        active
-                          ? ''
-                          : 'bg-[#0E121A] border-white/[0.08] text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      {meta.shortLabel}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Frontline Ready (Auto-Archive) Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  markDirty('status');
-                  setStatus('ready');
-                }}
-                style={
-                  status === 'ready'
-                    ? {
-                        backgroundColor: readyMeta.bgTint,
-                        borderColor: readyMeta.borderTint,
-                        color: readyMeta.color,
-                      }
-                    : undefined
-                }
-                className={`w-full px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                  status === 'ready'
-                    ? ''
-                    : 'bg-[#0E121A] border-white/[0.08] text-slate-300 hover:border-emerald-400/35 hover:text-emerald-300'
-                }`}
+              <label
+                htmlFor="detail-status-select"
+                className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400"
               >
-                <Archive className="w-3.5 h-3.5" />
-                <span>Frontline Ready (Archive Vehicle)</span>
-              </button>
+                Current Status
+              </label>
+              <div className="relative">
+                <span
+                  aria-hidden="true"
+                  className="w-2.5 h-2.5 rounded-full absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{ backgroundColor: currentStatusMeta.color }}
+                />
+                <select
+                  id="detail-status-select"
+                  value={status}
+                  onChange={(e) => {
+                    triggerHaptic('light');
+                    markDirty('status');
+                    setStatus(e.target.value as VehicleStatus);
+                  }}
+                  style={{
+                    borderColor: currentStatusMeta.borderTint,
+                  }}
+                  className="field-input pl-9 pr-10 appearance-none font-semibold text-white cursor-pointer"
+                >
+                  {STATUS_ORDER.map((st) => (
+                    <option key={st} value={st} className="bg-[#121721] text-white">
+                      {st === 'ready'
+                        ? `${STATUS_META[st].label} (Archive)`
+                        : STATUS_META[st].label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
 
               {willArchive && (
                 <p className="text-xs text-emerald-300/90 bg-emerald-500/10 border border-emerald-400/20 rounded-xl px-3 py-2 flex items-center gap-2">
@@ -427,6 +400,23 @@ export function VehicleDetailDrawer({
                   Saving will restore this vehicle from the Archive back to the Active Lot.
                 </p>
               )}
+            </div>
+
+            {/* Needs / Repair Notes (directly below Current Status) */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-200 mb-1.5">
+                Needs / Repair Notes
+              </label>
+              <textarea
+                rows={3}
+                value={repairNotes}
+                onChange={(e) => {
+                  markDirty('repairNotes');
+                  setRepairNotes(e.target.value);
+                }}
+                placeholder="What this vehicle needs (tune up, parts on order, body shop, keys...)"
+                className="field-input resize-none text-white placeholder:text-slate-500"
+              />
             </div>
 
             {/* Prep Checklist (saves immediately & logs to Activity history) */}
@@ -492,23 +482,6 @@ export function VehicleDetailDrawer({
                 }}
                 placeholder="Body shop, mechanic, detailer..."
                 className="field-input"
-              />
-            </div>
-
-            {/* Needs / Repair Notes */}
-            <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">
-                Needs / Repair Notes
-              </label>
-              <textarea
-                rows={3}
-                value={repairNotes}
-                onChange={(e) => {
-                  markDirty('repairNotes');
-                  setRepairNotes(e.target.value);
-                }}
-                placeholder="What this vehicle needs (tune up, parts on order, body shop, keys...)"
-                className="field-input resize-none"
               />
             </div>
 
