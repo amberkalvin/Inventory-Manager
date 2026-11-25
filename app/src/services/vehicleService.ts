@@ -1,17 +1,4 @@
 import {
-  collection,
-  deleteDoc,
-  deleteField,
-  doc,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  Timestamp,
-  writeBatch,
-} from 'firebase/firestore';
-import { INITIAL_MOCK_HISTORY, INITIAL_MOCK_VEHICLES } from '../data/mockVehicles';
-import {
   getVehicleLabel,
   isVehicleArchived,
   normalizeVehicleStatus,
@@ -19,127 +6,418 @@ import {
   VEHICLE_CHECKLIST_ITEMS,
   type HistoryChange,
   type HistoryEntry,
+  type SyncState,
   type TeamUser,
   type Vehicle,
   type VehicleChecklist,
   type VehicleStatus,
 } from '../types/vehicle';
 import { formatCurrency, formatMileage } from '../utils/format';
-import { getFirebaseClients } from './firebase';
 
-const LOCAL_VEHICLES_KEY = 'im_local_vehicles_v1';
-const LOCAL_HISTORY_KEY = 'im_local_history_v1';
+export const APPS_SCRIPT_URL =
+  'https://script.google.com/macros/s/AKfycbzWdvujNAKBaNUieZAX--78huRsU-hlGf5D7dl9C9VgSaLzVGgrim9nQULt4xdNHbkS/exec';
+
+export const SYNC_POLL_INTERVAL_MS = 10_000;
+
+const LOCAL_VEHICLES_KEY = 'im_cached_vehicles_v2';
+const LOCAL_HISTORY_KEY = 'im_cached_history_v2';
+
+let mutationVersion = 0;
+let pendingWrites = 0;
+let currentSyncState: SyncState = { status: 'idle' };
+
+const syncListeners = new Set<(state: SyncState) => void>();
+
+function emitSyncState(next: SyncState): void {
+  currentSyncState = next;
+  syncListeners.forEach((fn) => fn(next));
+}
+
+export function subscribeSyncState(onState: (state: SyncState) => void): () => void {
+  syncListeners.add(onState);
+  onState(currentSyncState);
+  return () => {
+    syncListeners.delete(onState);
+  };
+}
+
+function parseMaybeJson<T>(raw: unknown): T | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
+      try {
+        return JSON.parse(trimmed) as T;
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+  return raw as T;
+}
+
+function parseBoolean(val: unknown): boolean {
+  if (typeof val === 'boolean') return val;
+  if (typeof val === 'string') {
+    const lower = val.trim().toLowerCase();
+    return lower === 'true' || lower === 'yes' || lower === '1';
+  }
+  return Boolean(val);
+}
+
+function parseOptionalNumber(val: unknown): number | undefined {
+  if (typeof val === 'number' && Number.isFinite(val)) return val;
+  if (typeof val === 'string' && val.trim() !== '') {
+    const cleaned = Number(val.replace(/[^0-9.-]/g, ''));
+    if (Number.isFinite(cleaned)) return cleaned;
+  }
+  return undefined;
+}
+
+function normalizeOptionalString(val: unknown): string | undefined {
+  if (val === undefined || val === null) return undefined;
+  const trimmed = String(val).trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
 
 function normalizeChecklist(raw: unknown): VehicleChecklist | undefined {
-  if (!raw || typeof raw !== 'object') return undefined;
-  const rec = raw as Record<string, unknown>;
+  const obj = parseMaybeJson<Record<string, unknown>>(raw);
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return undefined;
   const cleaned: VehicleChecklist = {};
   let hasAny = false;
   for (const item of VEHICLE_CHECKLIST_ITEMS) {
-    if (typeof rec[item.key] === 'boolean') {
-      cleaned[item.key] = rec[item.key] as boolean;
+    if (item.key in obj && obj[item.key] !== undefined && obj[item.key] !== '') {
+      cleaned[item.key] = parseBoolean(obj[item.key]);
       hasAny = true;
     }
   }
   return hasAny ? cleaned : undefined;
 }
 
-function normalizeVehicleRecord(raw: Vehicle): Vehicle {
-  const status = normalizeVehicleStatus(raw.status);
-  const archived = Boolean(raw.archived || status === 'ready');
-  return {
-    ...raw,
-    status,
-    archived,
-    archivedAt: archived ? (raw.archivedAt ?? raw.updatedAt) : undefined,
-    checklist: normalizeChecklist(raw.checklist),
-  };
-}
-
-function readLocalVehicles(): Vehicle[] {
-  try {
-    const raw = localStorage.getItem(LOCAL_VEHICLES_KEY);
-    if (!raw) {
-      localStorage.setItem(LOCAL_VEHICLES_KEY, JSON.stringify(INITIAL_MOCK_VEHICLES));
-      return INITIAL_MOCK_VEHICLES.map(normalizeVehicleRecord);
+function parseHistoryChanges(raw: unknown): HistoryChange[] | undefined {
+  const arr = parseMaybeJson<unknown[]>(raw);
+  if (!Array.isArray(arr)) return undefined;
+  const parsed: HistoryChange[] = [];
+  for (const item of arr) {
+    if (item && typeof item === 'object' && 'field' in item) {
+      const rec = item as Record<string, unknown>;
+      parsed.push({
+        field: String(rec.field),
+        from: rec.from !== undefined ? String(rec.from) : undefined,
+        to: rec.to !== undefined ? String(rec.to) : undefined,
+      });
     }
-    const parsed = JSON.parse(raw) as Vehicle[];
-    return parsed.map(normalizeVehicleRecord);
-  } catch {
-    return INITIAL_MOCK_VEHICLES.map(normalizeVehicleRecord);
   }
+  return parsed.length > 0 ? parsed : undefined;
 }
 
-function writeLocalVehicles(vehicles: Vehicle[]): void {
-  localStorage.setItem(LOCAL_VEHICLES_KEY, JSON.stringify(vehicles));
-  window.dispatchEvent(new Event('im-local-sync'));
-}
-
-function readLocalHistory(): Record<string, HistoryEntry[]> {
-  try {
-    const raw = localStorage.getItem(LOCAL_HISTORY_KEY);
-    if (!raw) {
-      localStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify(INITIAL_MOCK_HISTORY));
-      return INITIAL_MOCK_HISTORY;
-    }
-    return JSON.parse(raw) as Record<string, HistoryEntry[]>;
-  } catch {
-    return INITIAL_MOCK_HISTORY;
+function normalizeHistoryEntries(raw: unknown): HistoryEntry[] | undefined {
+  const arr = parseMaybeJson<unknown[]>(raw);
+  if (!Array.isArray(arr)) return undefined;
+  const entries: HistoryEntry[] = [];
+  for (let i = 0; i < arr.length; i++) {
+    const item = arr[i];
+    if (!item || typeof item !== 'object') continue;
+    const rec = item as Record<string, unknown>;
+    entries.push({
+      id: normalizeOptionalString(rec.id) ?? `h-${Date.now()}-${i}`,
+      timestamp: normalizeTimestamp(rec.timestamp),
+      userEmail: normalizeOptionalString(rec.userEmail) ?? '',
+      userName: normalizeOptionalString(rec.userName) ?? 'Team',
+      action: normalizeOptionalString(rec.action) ?? '',
+      changes: parseHistoryChanges(rec.changes),
+    });
   }
-}
-
-function appendLocalHistory(
-  vehicleId: string,
-  user: TeamUser,
-  action: string,
-  changes?: HistoryChange[]
-): void {
-  const all = readLocalHistory();
-  const list = all[vehicleId] ?? [];
-  const entry: HistoryEntry = {
-    id: `h-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    timestamp: new Date().toISOString(),
-    userEmail: user.email,
-    userName: user.name,
-    action,
-    ...(changes && changes.length > 0 ? { changes } : {}),
-  };
-  all[vehicleId] = [entry, ...list];
-  localStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify(all));
-  window.dispatchEvent(new Event('im-local-history-sync'));
+  return entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 }
 
 function normalizeTimestamp(val: unknown): string {
-  if (val instanceof Timestamp) return val.toDate().toISOString();
-  if (typeof val === 'string' && val) return val;
+  if (typeof val === 'string' && val.trim()) {
+    const parsed = new Date(val);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+    return val;
+  }
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    return new Date(val).toISOString();
+  }
   return new Date().toISOString();
 }
 
-function stripUndefined<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
-  const cleaned: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(obj)) {
-    if (val !== undefined) cleaned[key] = val;
+function normalizeVehicleRecord(raw: Record<string, unknown>, fallbackIndex = 0): Vehicle {
+  const status = normalizeVehicleStatus(raw.status);
+  const archived =
+    raw.archived !== undefined && raw.archived !== ''
+      ? parseBoolean(raw.archived) || status === 'ready'
+      : status === 'ready';
+  const nowIso = new Date().toISOString();
+  const updatedAt = raw.updatedAt ? normalizeTimestamp(raw.updatedAt) : nowIso;
+  const createdAt = raw.createdAt ? normalizeTimestamp(raw.createdAt) : updatedAt;
+  const yearNum = parseOptionalNumber(raw.year);
+
+  return {
+    id: normalizeOptionalString(raw.id) ?? `veh-sync-${fallbackIndex}-${Date.now()}`,
+    stockNumber: normalizeOptionalString(raw.stockNumber),
+    vin: normalizeOptionalString(raw.vin),
+    year: yearNum && yearNum > 1900 ? Math.round(yearNum) : new Date().getFullYear(),
+    make: normalizeOptionalString(raw.make) ?? '',
+    model: normalizeOptionalString(raw.model) ?? '',
+    trim: normalizeOptionalString(raw.trim),
+    color: normalizeOptionalString(raw.color),
+    mileage: parseOptionalNumber(raw.mileage),
+    status,
+    archived,
+    archivedAt: archived
+      ? raw.archivedAt
+        ? normalizeTimestamp(raw.archivedAt)
+        : updatedAt
+      : undefined,
+    location: normalizeOptionalString(raw.location),
+    repairNotes: normalizeOptionalString(raw.repairNotes),
+    estimatedCost: parseOptionalNumber(raw.estimatedCost),
+    expectedReturnDate: normalizeOptionalString(raw.expectedReturnDate),
+    assignedTo: normalizeOptionalString(raw.assignedTo),
+    checklist: normalizeChecklist(raw.checklist),
+    photoUrl: normalizeOptionalString(raw.photoUrl),
+    history: normalizeHistoryEntries(raw.history),
+    updatedAt,
+    updatedBy: normalizeOptionalString(raw.updatedBy) ?? 'Team',
+    createdAt,
+  };
+}
+
+function readCachedVehicles(): Vehicle[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_VEHICLES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Record<string, unknown>[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item, idx) => normalizeVehicleRecord(item, idx));
+  } catch {
+    return [];
   }
-  return cleaned;
 }
 
-function toFirestoreUpdatePayload(obj: Record<string, unknown>): Record<string, unknown> {
-  const payload: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(obj)) {
-    payload[key] = val === undefined ? deleteField() : val;
+function writeCachedVehicles(vehicles: Vehicle[]): void {
+  try {
+    localStorage.setItem(LOCAL_VEHICLES_KEY, JSON.stringify(vehicles));
+  } catch {
+    // Ignore storage quota issues so sync still proceeds
   }
-  return payload;
+  window.dispatchEvent(new Event('im-vehicles-sync'));
 }
 
-function normalizeOptionalString(val: unknown): string | undefined {
-  if (typeof val !== 'string') return undefined;
-  const trimmed = val.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+function readCachedHistory(): Record<string, HistoryEntry[]> {
+  try {
+    const raw = localStorage.getItem(LOCAL_HISTORY_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<string, HistoryEntry[]>;
+  } catch {
+    return {};
+  }
 }
 
-function normalizeOptionalNumber(val: unknown): number | undefined {
-  if (typeof val === 'number' && Number.isFinite(val)) return val;
-  return undefined;
+function writeCachedHistory(historyMap: Record<string, HistoryEntry[]>): void {
+  try {
+    localStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify(historyMap));
+  } catch {
+    // Ignore storage quota issues
+  }
+  window.dispatchEvent(new Event('im-history-sync'));
+}
+
+function getVehicleHistoryList(vehicleId: string): HistoryEntry[] {
+  const fromVehicles = readCachedVehicles().find((v) => v.id === vehicleId)?.history;
+  const fromMap = readCachedHistory()[vehicleId];
+  const merged = new Map<string, HistoryEntry>();
+  for (const entry of fromMap ?? []) merged.set(entry.id, entry);
+  for (const entry of fromVehicles ?? []) merged.set(entry.id, entry);
+  return Array.from(merged.values()).sort((a, b) =>
+    b.timestamp.localeCompare(a.timestamp)
+  );
+}
+
+function extractReadableError(rawText: string, status: number): string {
+  const trimmed = rawText.trim();
+  if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
+    const match = trimmed.match(
+      /<div[^>]*font-family:\s*monospace[^>]*>([\s\S]*?)<\/div>/i
+    );
+    if (match?.[1]) {
+      const decoded = match[1]
+        .replace(/&#39;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/<[^>]+>/g, '')
+        .trim();
+      return `Google Apps Script error: ${decoded}`;
+    }
+    return `Google Apps Script returned an HTML error page (HTTP ${status}). Check your Apps Script deployment and sheet name.`;
+  }
+  if (trimmed) return `Sync error (HTTP ${status}): ${trimmed.slice(0, 180)}`;
+  return `Sync error (HTTP ${status}).`;
+}
+
+function parseRemoteVehicleArray(rawText: string, status: number): Vehicle[] {
+  const trimmed = rawText.trim();
+  if (!trimmed) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new Error(extractReadableError(trimmed, status));
+  }
+
+  let items: unknown[];
+  if (Array.isArray(parsed)) {
+    items = parsed;
+  } else if (parsed && typeof parsed === 'object') {
+    const rec = parsed as Record<string, unknown>;
+    if (typeof rec.error === 'string' && rec.error) {
+      throw new Error(`Google Apps Script error: ${rec.error}`);
+    }
+    if (Array.isArray(rec.vehicles)) {
+      items = rec.vehicles;
+    } else if (Array.isArray(rec.data)) {
+      items = rec.data;
+    } else {
+      throw new Error('Unexpected JSON response from Google Apps Script (expected an array).');
+    }
+  } else {
+    throw new Error('Unexpected response format from Google Apps Script.');
+  }
+
+  return items
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+    .map((item, idx) => normalizeVehicleRecord(item, idx));
+}
+
+export async function fetchVehiclesFromRemote(): Promise<Vehicle[] | null> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    emitSyncState({
+      status: 'offline',
+      lastSyncedAt: currentSyncState.lastSyncedAt,
+    });
+    return null;
+  }
+
+  const pollVersion = mutationVersion;
+  if (pendingWrites > 0) return null;
+
+  emitSyncState({
+    status: 'syncing',
+    lastSyncedAt: currentSyncState.lastSyncedAt,
+  });
+
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(extractReadableError(text, res.status));
+    }
+    const remoteVehicles = parseRemoteVehicleArray(text, res.status);
+
+    // Avoid overwriting local optimistic state if a write happened during this poll
+    if (pendingWrites > 0 || pollVersion !== mutationVersion) {
+      return null;
+    }
+
+    const existingHistory = readCachedHistory();
+    const mergedHistory: Record<string, HistoryEntry[]> = { ...existingHistory };
+    const hydrated = remoteVehicles.map((v) => {
+      const localEntries = existingHistory[v.id] ?? [];
+      const remoteEntries = v.history ?? [];
+      if (remoteEntries.length > 0) {
+        const byId = new Map<string, HistoryEntry>();
+        for (const e of localEntries) byId.set(e.id, e);
+        for (const e of remoteEntries) byId.set(e.id, e);
+        const combined = Array.from(byId.values()).sort((a, b) =>
+          b.timestamp.localeCompare(a.timestamp)
+        );
+        mergedHistory[v.id] = combined;
+        return { ...v, history: combined };
+      }
+      if (localEntries.length > 0) {
+        return { ...v, history: localEntries };
+      }
+      return v;
+    });
+
+    writeCachedHistory(mergedHistory);
+    writeCachedVehicles(hydrated);
+    emitSyncState({
+      status: 'synced',
+      lastSyncedAt: new Date().toISOString(),
+    });
+    return hydrated;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unable to sync with Google Sheets.';
+    emitSyncState({
+      status: 'error',
+      lastSyncedAt: currentSyncState.lastSyncedAt,
+      error: msg,
+    });
+    return null;
+  }
+}
+
+async function postVehiclesToRemote(vehicles: Vehicle[]): Promise<void> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    emitSyncState({
+      status: 'offline',
+      lastSyncedAt: currentSyncState.lastSyncedAt,
+      error: 'Saved locally while offline. Changes will sync when reconnected.',
+    });
+    return;
+  }
+
+  pendingWrites++;
+  emitSyncState({
+    status: 'syncing',
+    lastSyncedAt: currentSyncState.lastSyncedAt,
+  });
+
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(vehicles),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(extractReadableError(text, res.status));
+    }
+    const trimmed = text.trim();
+    if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
+      throw new Error(extractReadableError(trimmed, res.status));
+    }
+    emitSyncState({
+      status: 'synced',
+      lastSyncedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    const msg =
+      err instanceof Error ? err.message : 'Unable to save updates to Google Sheets.';
+    emitSyncState({
+      status: 'error',
+      lastSyncedAt: currentSyncState.lastSyncedAt,
+      error: msg,
+    });
+    throw new Error(msg);
+  } finally {
+    pendingWrites = Math.max(0, pendingWrites - 1);
+  }
 }
 
 function formatChangeSummary(changes: HistoryChange[]): string {
@@ -181,8 +459,8 @@ function buildVehicleChanges(
     nextVal: number | undefined,
     formatter: (n: number) => string
   ) => {
-    const prevNorm = normalizeOptionalNumber(prevVal);
-    const nextNorm = normalizeOptionalNumber(nextVal);
+    const prevNorm = parseOptionalNumber(prevVal);
+    const nextNorm = parseOptionalNumber(nextVal);
     if (prevNorm === nextNorm) return;
     changes.push({
       field,
@@ -202,9 +480,7 @@ function buildVehicleChanges(
   const prevArchived = isVehicleArchived(previous);
   const nextStatus = nextUpdates.status ?? previous.status;
   const nextArchived =
-    nextUpdates.archived !== undefined
-      ? nextUpdates.archived
-      : nextStatus === 'ready';
+    nextUpdates.archived !== undefined ? nextUpdates.archived : nextStatus === 'ready';
   if (prevArchived !== nextArchived) {
     changes.push({
       field: 'Archive',
@@ -284,157 +560,56 @@ function buildVehicleChanges(
   return changes;
 }
 
-function parseHistoryChanges(raw: unknown): HistoryChange[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const parsed: HistoryChange[] = [];
-  for (const item of raw) {
-    if (item && typeof item === 'object' && 'field' in item) {
-      const rec = item as Record<string, unknown>;
-      parsed.push({
-        field: String(rec.field),
-        from: rec.from !== undefined ? String(rec.from) : undefined,
-        to: rec.to !== undefined ? String(rec.to) : undefined,
-      });
-    }
-  }
-  return parsed.length > 0 ? parsed : undefined;
-}
+export function subscribeVehicles(onData: (vehicles: Vehicle[]) => void): () => void {
+  const emitCached = () => {
+    const sorted = [...readCachedVehicles()].sort((a, b) =>
+      b.updatedAt.localeCompare(a.updatedAt)
+    );
+    onData(sorted);
+  };
 
-export function subscribeVehicles(
-  mode: 'firebase' | 'local',
-  onData: (vehicles: Vehicle[]) => void,
-  onError: (message: string) => void
-): () => void {
-  if (mode === 'local') {
-    const emit = () => {
-      const sorted = [...readLocalVehicles()].sort((a, b) =>
-        b.updatedAt.localeCompare(a.updatedAt)
-      );
-      onData(sorted);
-    };
-    emit();
-    window.addEventListener('im-local-sync', emit);
-    window.addEventListener('storage', emit);
-    return () => {
-      window.removeEventListener('im-local-sync', emit);
-      window.removeEventListener('storage', emit);
-    };
-  }
+  emitCached();
+  void fetchVehiclesFromRemote();
 
-  const clients = getFirebaseClients();
-  if (!clients) {
-    onError('Firebase client is not initialized.');
-    return () => {};
-  }
+  const timer = window.setInterval(() => {
+    void fetchVehiclesFromRemote();
+  }, SYNC_POLL_INTERVAL_MS);
 
-  const q = query(collection(clients.db, 'vehicles'), orderBy('updatedAt', 'desc'));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const list: Vehicle[] = snap.docs.map((d) => {
-        const data = d.data({ serverTimestamps: 'estimate' });
-        const status = normalizeVehicleStatus(data.status);
-        const archived = Boolean(data.archived || status === 'ready');
-        const updatedAt = normalizeTimestamp(data.updatedAt);
-        return {
-          id: d.id,
-          stockNumber: data.stockNumber ? String(data.stockNumber) : undefined,
-          vin: data.vin ? String(data.vin) : undefined,
-          year: Number(data.year ?? new Date().getFullYear()),
-          make: String(data.make ?? ''),
-          model: String(data.model ?? ''),
-          trim: data.trim ? String(data.trim) : undefined,
-          color: data.color ? String(data.color) : undefined,
-          mileage: typeof data.mileage === 'number' ? data.mileage : undefined,
-          status,
-          archived,
-          archivedAt: archived
-            ? (data.archivedAt ? normalizeTimestamp(data.archivedAt) : updatedAt)
-            : undefined,
-          location: data.location ? String(data.location) : undefined,
-          repairNotes: data.repairNotes ? String(data.repairNotes) : undefined,
-          estimatedCost: typeof data.estimatedCost === 'number' ? data.estimatedCost : undefined,
-          expectedReturnDate: data.expectedReturnDate ? String(data.expectedReturnDate) : undefined,
-          assignedTo: data.assignedTo ? String(data.assignedTo) : undefined,
-          checklist: normalizeChecklist(data.checklist),
-          photoUrl: data.photoUrl ? String(data.photoUrl) : undefined,
-          updatedAt,
-          updatedBy: String(data.updatedBy ?? 'Team'),
-          createdAt: normalizeTimestamp(data.createdAt),
-        };
-      });
-      onData(list);
-    },
-    (err) => {
-      if (err.code === 'permission-denied') {
-        onError(
-          'Access denied by Firestore Security Rules. Ask your admin to add your email to the team allowlist.'
-        );
-      } else {
-        onError(err.message || 'Unable to sync with Firestore.');
-      }
-    }
-  );
+  const onOnline = () => {
+    void fetchVehiclesFromRemote();
+  };
+
+  window.addEventListener('im-vehicles-sync', emitCached);
+  window.addEventListener('storage', emitCached);
+  window.addEventListener('online', onOnline);
+
+  return () => {
+    window.clearInterval(timer);
+    window.removeEventListener('im-vehicles-sync', emitCached);
+    window.removeEventListener('storage', emitCached);
+    window.removeEventListener('online', onOnline);
+  };
 }
 
 export function subscribeVehicleHistory(
-  mode: 'firebase' | 'local',
   vehicleId: string,
-  onData: (entries: HistoryEntry[]) => void,
-  onError?: (message: string) => void
+  onData: (entries: HistoryEntry[]) => void
 ): () => void {
-  if (mode === 'local') {
-    const emit = () => {
-      const all = readLocalHistory();
-      onData(all[vehicleId] ?? []);
-    };
-    emit();
-    window.addEventListener('im-local-history-sync', emit);
-    return () => window.removeEventListener('im-local-history-sync', emit);
-  }
-
-  const clients = getFirebaseClients();
-  if (!clients) {
-    onData([]);
-    return () => {};
-  }
-
-  const historyCol = collection(clients.db, 'vehicles', vehicleId, 'history');
-  return onSnapshot(
-    historyCol,
-    (snap) => {
-      onError?.('');
-      const entries: HistoryEntry[] = snap.docs
-        .map((d) => {
-          const data = d.data({ serverTimestamps: 'estimate' });
-          return {
-            id: d.id,
-            timestamp: normalizeTimestamp(data.timestamp ?? data.clientTimestamp),
-            userEmail: String(data.userEmail ?? ''),
-            userName: String(data.userName ?? 'Team'),
-            action: String(data.action ?? ''),
-            changes: parseHistoryChanges(data.changes),
-          };
-        })
-        .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-      onData(entries);
-    },
-    (err) => {
-      if (err.code === 'permission-denied') {
-        onError?.(
-          'Firestore denied access to vehicle history. Verify your Firestore Security Rules allow read/create on /vehicles/{vehicleId}/history/{entryId}.'
-        );
-      } else {
-        onError?.(err.message || 'Unable to load vehicle history.');
-      }
-      onData([]);
-    }
-  );
+  const emit = () => {
+    onData(getVehicleHistoryList(vehicleId));
+  };
+  emit();
+  window.addEventListener('im-history-sync', emit);
+  window.addEventListener('im-vehicles-sync', emit);
+  return () => {
+    window.removeEventListener('im-history-sync', emit);
+    window.removeEventListener('im-vehicles-sync', emit);
+  };
 }
 
 export type NewVehicleInput = Omit<
   Vehicle,
-  'id' | 'createdAt' | 'updatedAt' | 'updatedBy' | 'archived' | 'archivedAt'
+  'id' | 'createdAt' | 'updatedAt' | 'updatedBy' | 'archived' | 'archivedAt' | 'history'
 >;
 
 export async function createVehicle(
@@ -465,49 +640,37 @@ export async function createVehicle(
   }
   if (input.repairNotes) initialChanges.push({ field: 'Repair Notes', to: input.repairNotes });
 
-  if (user.mode === 'local') {
-    const id = `veh-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const next: Vehicle = {
-      ...input,
-      status,
-      archived,
-      archivedAt: archived ? nowIso : undefined,
-      id,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      updatedBy: user.name,
-    };
-    writeLocalVehicles([next, ...readLocalVehicles()]);
-    appendLocalHistory(id, user, action, initialChanges);
-    return id;
-  }
-
-  const clients = getFirebaseClients();
-  if (!clients) throw new Error('Firebase not connected');
-  const vehicleRef = doc(collection(clients.db, 'vehicles'));
-  const historyRef = doc(collection(clients.db, 'vehicles', vehicleRef.id, 'history'));
-  const batch = writeBatch(clients.db);
-  batch.set(vehicleRef, {
-    ...stripUndefined({
-      ...(input as unknown as Record<string, unknown>),
-      status,
-      archived,
-      ...(archived ? { archivedAt: serverTimestamp() } : {}),
-    }),
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    updatedBy: user.name,
-  });
-  batch.set(historyRef, {
-    timestamp: serverTimestamp(),
-    clientTimestamp: nowIso,
+  const id = `veh-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const initialEntry: HistoryEntry = {
+    id: `h-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    timestamp: nowIso,
     userEmail: user.email,
     userName: user.name,
     action,
     changes: initialChanges,
-  });
-  await batch.commit();
-  return vehicleRef.id;
+  };
+
+  const nextVehicle: Vehicle = {
+    ...input,
+    status,
+    archived,
+    archivedAt: archived ? nowIso : undefined,
+    id,
+    history: [initialEntry],
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    updatedBy: user.name,
+  };
+
+  mutationVersion++;
+  const nextList = [nextVehicle, ...readCachedVehicles()];
+  const historyMap = readCachedHistory();
+  historyMap[id] = [initialEntry];
+  writeCachedHistory(historyMap);
+  writeCachedVehicles(nextList);
+
+  await postVehiclesToRemote(nextList);
+  return id;
 }
 
 export async function updateVehicle(
@@ -539,71 +702,48 @@ export async function updateVehicle(
   }
 
   const summary = formatChangeSummary(changes);
-
-  if (user.mode === 'local') {
-    const list = readLocalVehicles().map((v) => {
-      if (v.id !== previous.id) return v;
-      const merged: Vehicle = {
-        ...v,
-        ...normalizedUpdates,
-        status: nextStatus,
-        archived: nextArchived,
-        archivedAt: nextArchived ? (v.archivedAt ?? nowIso) : undefined,
-        updatedAt: nowIso,
-        updatedBy: user.name,
-      };
-      // Remove keys explicitly cleared to empty string / undefined
-      if (merged.photoUrl === '') merged.photoUrl = undefined;
-      return merged;
-    });
-    writeLocalVehicles(list);
-    appendLocalHistory(previous.id, user, summary, changes);
-    return true;
-  }
-
-  const clients = getFirebaseClients();
-  if (!clients) throw new Error('Firebase not connected');
-  const vehicleRef = doc(clients.db, 'vehicles', previous.id);
-  const historyRef = doc(collection(clients.db, 'vehicles', previous.id, 'history'));
-
-  const firestoreFields: Record<string, unknown> = {
-    ...(normalizedUpdates as unknown as Record<string, unknown>),
-  };
-  if (firestoreFields.photoUrl === '') {
-    firestoreFields.photoUrl = undefined;
-  }
-  if (nextArchived && !prevArchived) {
-    firestoreFields.archivedAt = serverTimestamp();
-  }
-
-  const batch = writeBatch(clients.db);
-  batch.update(vehicleRef, {
-    ...toFirestoreUpdatePayload(firestoreFields),
-    updatedAt: serverTimestamp(),
-    updatedBy: user.name,
-  });
-  batch.set(historyRef, {
-    timestamp: serverTimestamp(),
-    clientTimestamp: nowIso,
+  const nextEntry: HistoryEntry = {
+    id: `h-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    timestamp: nowIso,
     userEmail: user.email,
     userName: user.name,
     action: summary,
     changes,
+  };
+
+  const updatedHistory = [nextEntry, ...getVehicleHistoryList(previous.id)];
+
+  mutationVersion++;
+  const nextList = readCachedVehicles().map((v) => {
+    if (v.id !== previous.id) return v;
+    const merged: Vehicle = {
+      ...v,
+      ...normalizedUpdates,
+      status: nextStatus,
+      archived: nextArchived,
+      archivedAt: nextArchived ? (v.archivedAt ?? nowIso) : undefined,
+      history: updatedHistory,
+      updatedAt: nowIso,
+      updatedBy: user.name,
+    };
+    if (merged.photoUrl === '') merged.photoUrl = undefined;
+    return merged;
   });
-  await batch.commit();
+
+  const historyMap = readCachedHistory();
+  historyMap[previous.id] = updatedHistory;
+  writeCachedHistory(historyMap);
+  writeCachedVehicles(nextList);
+
+  await postVehiclesToRemote(nextList);
   return true;
 }
 
-export async function deleteVehicle(user: TeamUser, vehicleId: string): Promise<void> {
-  if (user.mode === 'local') {
-    const next = readLocalVehicles().filter((v) => v.id !== vehicleId);
-    writeLocalVehicles(next);
-    return;
-  }
-
-  const clients = getFirebaseClients();
-  if (!clients) throw new Error('Firebase not connected');
-  await deleteDoc(doc(clients.db, 'vehicles', vehicleId));
+export async function deleteVehicle(vehicleId: string): Promise<void> {
+  mutationVersion++;
+  const nextList = readCachedVehicles().filter((v) => v.id !== vehicleId);
+  writeCachedVehicles(nextList);
+  await postVehiclesToRemote(nextList);
 }
 
 export async function bulkImportVehicles(
@@ -612,66 +752,46 @@ export async function bulkImportVehicles(
 ): Promise<number> {
   if (items.length === 0) return 0;
 
-  if (user.mode === 'local') {
-    const nowIso = new Date().toISOString();
-    const created: Vehicle[] = items.map((item, idx) => {
-      const status = normalizeVehicleStatus(item.status);
-      const archived = status === 'ready';
-      return {
-        ...item,
-        status,
-        archived,
-        archivedAt: archived ? nowIso : undefined,
-        id: `veh-${Date.now()}-${idx}`,
-        createdAt: nowIso,
-        updatedAt: nowIso,
-        updatedBy: user.name,
-      };
-    });
-    writeLocalVehicles([...created, ...readLocalVehicles()]);
-    created.forEach((v) =>
-      appendLocalHistory(
-        v.id,
-        user,
-        v.archived
-          ? `Imported ${getVehicleLabel(v)} via CSV (Archived as Frontline Ready)`
-          : `Imported ${getVehicleLabel(v)} via CSV`,
-        [
-          { field: 'Status', to: STATUS_META[v.status].label },
-          ...(v.archived ? [{ field: 'Archive', to: 'Archived (Frontline Ready)' }] : []),
-        ]
-      )
-    );
-    return created.length;
-  }
+  const nowIso = new Date().toISOString();
+  const historyMap = readCachedHistory();
 
-  const clients = getFirebaseClients();
-  if (!clients) throw new Error('Firebase not connected');
-
-  const batch = writeBatch(clients.db);
-  for (const item of items) {
+  const created: Vehicle[] = items.map((item, idx) => {
     const status = normalizeVehicleStatus(item.status);
     const archived = status === 'ready';
-    const ref = doc(collection(clients.db, 'vehicles'));
-    batch.set(ref, {
-      ...stripUndefined({
-        ...(item as unknown as Record<string, unknown>),
-        status,
-        archived,
-        ...(archived ? { archivedAt: serverTimestamp() } : {}),
-      }),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+    const id = `veh-${Date.now()}-${idx}`;
+    const label = getVehicleLabel(item);
+    const entry: HistoryEntry = {
+      id: `h-${Date.now()}-${idx}`,
+      timestamp: nowIso,
+      userEmail: user.email,
+      userName: user.name,
+      action: archived
+        ? `Imported ${label} via CSV (Archived as Frontline Ready)`
+        : `Imported ${label} via CSV`,
+      changes: [
+        { field: 'Status', to: STATUS_META[status].label },
+        ...(archived ? [{ field: 'Archive', to: 'Archived (Frontline Ready)' }] : []),
+      ],
+    };
+    historyMap[id] = [entry];
+    return {
+      ...item,
+      status,
+      archived,
+      archivedAt: archived ? nowIso : undefined,
+      id,
+      history: [entry],
+      createdAt: nowIso,
+      updatedAt: nowIso,
       updatedBy: user.name,
-    });
-  }
-  await batch.commit();
-  return items.length;
-}
+    };
+  });
 
-export function resetLocalDemoData(): void {
-  localStorage.setItem(LOCAL_VEHICLES_KEY, JSON.stringify(INITIAL_MOCK_VEHICLES));
-  localStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify(INITIAL_MOCK_HISTORY));
-  window.dispatchEvent(new Event('im-local-sync'));
-  window.dispatchEvent(new Event('im-local-history-sync'));
+  mutationVersion++;
+  const nextList = [...created, ...readCachedVehicles()];
+  writeCachedHistory(historyMap);
+  writeCachedVehicles(nextList);
+
+  await postVehiclesToRemote(nextList);
+  return created.length;
 }

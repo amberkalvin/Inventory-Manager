@@ -1,5 +1,5 @@
 // Compresses camera/library photos client-side into lightweight JPEG data URLs (~30-60 KB)
-// so thumbnails work instantaneously offline, in localStorage, and inside Firestore documents.
+// so thumbnails load instantaneously offline, in localStorage, and across synced phones.
 
 export async function compressVehicleImage(
   file: File,

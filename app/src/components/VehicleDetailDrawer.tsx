@@ -34,7 +34,6 @@ import { VehicleThumbnail } from './VehicleThumbnail';
 
 interface VehicleDetailDrawerProps {
   vehicle: Vehicle;
-  mode: 'firebase' | 'local';
   onClose: () => void;
   onSave: (previous: Vehicle, updates: Partial<NewVehicleInput>) => Promise<void>;
   onToggleChecklist: (
@@ -47,7 +46,6 @@ interface VehicleDetailDrawerProps {
 
 export function VehicleDetailDrawer({
   vehicle,
-  mode,
   onClose,
   onSave,
   onToggleChecklist,
@@ -76,7 +74,6 @@ export function VehicleDetailDrawer({
   const [repairNotes, setRepairNotes] = useState(vehicle.repairNotes ?? '');
 
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [historyError, setHistoryError] = useState('');
   const [actionError, setActionError] = useState('');
   const [saving, setSaving] = useState(false);
   const [decoding, setDecoding] = useState(false);
@@ -112,14 +109,9 @@ export function VehicleDetailDrawer({
   };
 
   useEffect(() => {
-    const unsub = subscribeVehicleHistory(
-      mode,
-      vehicle.id,
-      setHistory,
-      setHistoryError
-    );
+    const unsub = subscribeVehicleHistory(vehicle.id, setHistory);
     return () => unsub();
-  }, [mode, vehicle.id]);
+  }, [vehicle.id]);
 
   const handleCopyVin = async () => {
     if (!vin) return;
@@ -649,12 +641,6 @@ export function VehicleDetailDrawer({
           </form>
         ) : (
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-            {historyError && (
-              <div className="rounded-xl bg-red-500/12 border border-red-400/25 px-3.5 py-2.5 flex items-start gap-2 text-xs text-red-200">
-                <AlertTriangle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
-                <span>{historyError}</span>
-              </div>
-            )}
             {history.length === 0 ? (
               <div className="text-center py-12 text-slate-500 text-sm">
                 No activity logged yet for this vehicle.

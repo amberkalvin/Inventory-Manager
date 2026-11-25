@@ -9,12 +9,12 @@ import {
   LayoutGrid,
   List,
   Plus,
+  RefreshCw,
   Search,
   Settings,
   WifiOff,
   X,
 } from 'lucide-react';
-import type { User as FirebaseUser } from 'firebase/auth';
 import { DEFAULT_TEAM_MEMBERS } from './data/mockVehicles';
 import {
   getVehicleLabel,
@@ -22,20 +22,17 @@ import {
   STATUS_META,
   STATUS_ORDER,
   VEHICLE_CHECKLIST_ITEMS,
+  type SyncState,
   type TeamUser,
   type Vehicle,
   type VehicleChecklistKey,
   type VehicleStatus,
 } from './types/vehicle';
 import {
-  getSavedFirebaseConfig,
-  logoutFirebase,
-  resetFirebaseClients,
-  subscribeFirebaseAuth,
-} from './services/firebase';
-import {
   createVehicle,
   deleteVehicle,
+  fetchVehiclesFromRemote,
+  subscribeSyncState,
   subscribeVehicles,
   updateVehicle,
   type NewVehicleInput,
@@ -46,7 +43,7 @@ import { VehicleListRow } from './components/VehicleListRow';
 import { QuickAddModal } from './components/QuickAddModal';
 import { VehicleDetailDrawer } from './components/VehicleDetailDrawer';
 import { SettingsModal } from './components/SettingsModal';
-import { AuthGate } from './components/AuthGate';
+import { AuthGate, isShopPinUnlocked, lockShopPin } from './components/AuthGate';
 import { triggerHaptic } from './services/nativeBridge';
 
 const LOCAL_USER_KEY = 'im_local_user_v1';
@@ -66,7 +63,7 @@ function loadLocalUser(): TeamUser {
     if (raw) {
       const parsed = JSON.parse(raw) as { name?: string; email?: string };
       if (parsed.name && parsed.email) {
-        return { name: parsed.name, email: parsed.email, mode: 'local' };
+        return { name: parsed.name, email: parsed.email };
       }
     }
   } catch {
@@ -75,21 +72,15 @@ function loadLocalUser(): TeamUser {
   return {
     name: DEFAULT_TEAM_MEMBERS[0].name,
     email: DEFAULT_TEAM_MEMBERS[0].email,
-    mode: 'local',
   };
 }
 
 export function App() {
-  const [hasFirebaseConfig, setHasFirebaseConfig] = useState<boolean>(() =>
-    Boolean(getSavedFirebaseConfig())
-  );
-  const [forceLocalDemo, setForceLocalDemo] = useState(false);
-  const [authReady, setAuthReady] = useState<boolean>(() => !getSavedFirebaseConfig());
-  const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
-  const [localUser, setLocalUser] = useState<TeamUser>(loadLocalUser);
+  const [unlocked, setUnlocked] = useState<boolean>(isShopPinUnlocked);
+  const [currentUser, setCurrentUser] = useState<TeamUser>(loadLocalUser);
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [syncError, setSyncError] = useState('');
+  const [syncState, setSyncState] = useState<SyncState>({ status: 'idle' });
   const [isOnline, setIsOnline] = useState<boolean>(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
@@ -122,51 +113,21 @@ export function App() {
     };
   }, []);
 
-  // Subscribe to Firebase Auth whenever Firebase config is active
+  // Subscribe to Google Sheets polling (on load + every 10s) and sync state once unlocked
   useEffect(() => {
-    if (!hasFirebaseConfig) {
-      setFbUser(null);
-      setAuthReady(true);
-      return;
-    }
-    setAuthReady(false);
-    const unsub = subscribeFirebaseAuth((user) => {
-      setFbUser(user);
-      setAuthReady(true);
+    if (!unlocked) return;
+    const unsubState = subscribeSyncState(setSyncState);
+    const unsubVehicles = subscribeVehicles((list) => {
+      setVehicles(list);
+      setSelectedVehicle((prev) =>
+        prev ? list.find((v) => v.id === prev.id) ?? null : null
+      );
     });
-    return () => unsub();
-  }, [hasFirebaseConfig]);
-
-  const activeUser: TeamUser | null = useMemo(() => {
-    if (hasFirebaseConfig && !forceLocalDemo) {
-      if (!fbUser) return null;
-      return {
-        name:
-          fbUser.displayName ||
-          (fbUser.email ? fbUser.email.split('@')[0] : 'Team Member'),
-        email: fbUser.email || 'team@local',
-        mode: 'firebase',
-      };
-    }
-    return localUser;
-  }, [hasFirebaseConfig, forceLocalDemo, fbUser, localUser]);
-
-  // Subscribe to real-time Firestore or Local Storage vehicles
-  useEffect(() => {
-    if (!activeUser) return;
-    setSyncError('');
-    const unsub = subscribeVehicles(
-      activeUser.mode,
-      (list) => {
-        setVehicles(list);
-        setSelectedVehicle((prev) =>
-          prev ? list.find((v) => v.id === prev.id) ?? null : null
-        );
-      },
-      (errMsg) => setSyncError(errMsg)
-    );
-    return () => unsub();
-  }, [activeUser]);
+    return () => {
+      unsubState();
+      unsubVehicles();
+    };
+  }, [unlocked]);
 
   const activeVehicles = useMemo(
     () => vehicles.filter((v) => !isVehicleArchived(v)),
@@ -237,16 +198,19 @@ export function App() {
   }, [vehicles]);
 
   const handleSelectLocalUser = (name: string, email: string) => {
-    const next: TeamUser = { name, email, mode: 'local' };
-    setLocalUser(next);
-    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify({ name, email }));
+    const next: TeamUser = { name, email };
+    setCurrentUser(next);
+    try {
+      localStorage.setItem(LOCAL_USER_KEY, JSON.stringify({ name, email }));
+    } catch {
+      // Ignore storage errors
+    }
     showToast(`Switched to ${name}`);
   };
 
-  const handleFirebaseConfigChanged = async () => {
-    await resetFirebaseClients();
-    setForceLocalDemo(false);
-    setHasFirebaseConfig(Boolean(getSavedFirebaseConfig()));
+  const handleLockApp = () => {
+    lockShopPin();
+    setUnlocked(false);
   };
 
   const handleToggleArchive = () => {
@@ -256,26 +220,32 @@ export function App() {
   };
 
   const handleQuickStatus = async (vehicle: Vehicle, nextStatus: VehicleStatus) => {
-    if (!activeUser) return;
     const wasArchived = isVehicleArchived(vehicle);
-    const changed = await updateVehicle(activeUser, vehicle, { status: nextStatus });
-    if (!changed) return;
-    const label = getVehicleLabel(vehicle);
+    try {
+      const changed = await updateVehicle(currentUser, vehicle, { status: nextStatus });
+      if (!changed) return;
+      const label = getVehicleLabel(vehicle);
 
-    if (nextStatus === 'ready') {
-      showToast(`${label} marked Frontline Ready & archived`);
-    } else if (wasArchived) {
-      showToast(`${label} restored to ${STATUS_META[nextStatus].label}`);
-    } else {
-      showToast(`${label} → ${STATUS_META[nextStatus].label}`);
+      if (nextStatus === 'ready') {
+        showToast(`${label} marked Frontline Ready & archived`);
+      } else if (wasArchived) {
+        showToast(`${label} restored to ${STATUS_META[nextStatus].label}`);
+      } else {
+        showToast(`${label} → ${STATUS_META[nextStatus].label}`);
+      }
+    } catch {
+      showToast('Saved locally — cloud sync failed');
     }
   };
 
   const handleQuickPhoto = async (vehicle: Vehicle, dataUrl: string) => {
-    if (!activeUser) return;
-    const changed = await updateVehicle(activeUser, vehicle, { photoUrl: dataUrl });
-    if (changed) {
-      showToast(`Updated photo for ${getVehicleLabel(vehicle)}`);
+    try {
+      const changed = await updateVehicle(currentUser, vehicle, { photoUrl: dataUrl });
+      if (changed) {
+        showToast(`Updated photo for ${getVehicleLabel(vehicle)}`);
+      }
+    } catch {
+      showToast('Saved photo locally — cloud sync failed');
     }
   };
 
@@ -284,12 +254,11 @@ export function App() {
     key: VehicleChecklistKey,
     checked: boolean
   ) => {
-    if (!activeUser) return;
     const nextChecklist = {
       ...(vehicle.checklist ?? {}),
       [key]: checked,
     };
-    const changed = await updateVehicle(activeUser, vehicle, {
+    const changed = await updateVehicle(currentUser, vehicle, {
       checklist: nextChecklist,
     });
     if (changed) {
@@ -312,8 +281,7 @@ export function App() {
   };
 
   const handleCreateVehicle = async (input: NewVehicleInput) => {
-    if (!activeUser) return;
-    await createVehicle(activeUser, input);
+    await createVehicle(currentUser, input);
     const label = getVehicleLabel(input);
     if (input.status === 'ready') {
       showToast(`Added ${label} to Archive (Frontline Ready)`);
@@ -326,10 +294,9 @@ export function App() {
     previous: Vehicle,
     updates: Partial<NewVehicleInput>
   ) => {
-    if (!activeUser) return;
     const wasArchived = isVehicleArchived(previous);
     const nextStatus = updates.status ?? previous.status;
-    const changed = await updateVehicle(activeUser, previous, updates);
+    const changed = await updateVehicle(currentUser, previous, updates);
     if (!changed) {
       showToast('No changes to save');
       return;
@@ -351,26 +318,14 @@ export function App() {
   };
 
   const handleDeleteVehicle = async (vehicleId: string) => {
-    if (!activeUser) return;
-    await deleteVehicle(activeUser, vehicleId);
+    await deleteVehicle(vehicleId);
     showToast('Removed vehicle from inventory');
   };
 
-  // Loading auth state briefly when Firebase is configured
-  if (hasFirebaseConfig && !forceLocalDemo && !authReady) {
-    return (
-      <div className="min-h-screen bg-[#0B0E14] flex items-center justify-center text-slate-400 text-sm">
-        Connecting to Inventory Manager…
-      </div>
-    );
+  // Require 4-digit shop PIN until stored in localStorage
+  if (!unlocked) {
+    return <AuthGate onUnlocked={() => setUnlocked(true)} />;
   }
-
-  // Require login when Firebase Cloud Sync is configured
-  if (hasFirebaseConfig && !forceLocalDemo && !activeUser) {
-    return <AuthGate onUseLocalDemo={() => setForceLocalDemo(true)} />;
-  }
-
-  const currentUser = activeUser ?? localUser;
 
   return (
     <div className="min-h-screen bg-[#0B0E14] text-slate-100 pb-28 sm:pb-12">
@@ -391,15 +346,25 @@ export function App() {
                 Inventory Manager
               </h1>
               <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                {currentUser.mode === 'firebase' ? (
+                {syncState.status === 'syncing' ? (
+                  <span className="inline-flex items-center gap-1 text-sky-400 font-medium">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Syncing…
+                  </span>
+                ) : syncState.status === 'error' ? (
+                  <span className="inline-flex items-center gap-1 text-amber-400 font-medium">
+                    <CloudOff className="w-3 h-3" />
+                    Sync Issue
+                  </span>
+                ) : !isOnline || syncState.status === 'offline' ? (
+                  <span className="inline-flex items-center gap-1 text-amber-400 font-medium">
+                    <CloudOff className="w-3 h-3" />
+                    Offline
+                  </span>
+                ) : (
                   <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
                     <Cloud className="w-3 h-3" />
                     Live Sync
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-sky-400 font-medium">
-                    <CloudOff className="w-3 h-3" />
-                    Local Mode
                   </span>
                 )}
                 <span>&bull;</span>
@@ -467,15 +432,24 @@ export function App() {
         {!isOnline && (
           <div className="rounded-xl bg-amber-500/12 border border-amber-400/25 px-3.5 py-2.5 flex items-center gap-2.5 text-xs text-amber-200">
             <WifiOff className="w-4 h-4 shrink-0 text-amber-400" />
-            <span>Offline lot mode active — updates are cached locally and sync automatically when signal returns.</span>
+            <span>Offline lot mode active — updates are cached locally until signal returns.</span>
           </div>
         )}
 
-        {/* Sync Permission / Connection Error Banner */}
-        {syncError && (
-          <div className="rounded-xl bg-red-500/12 border border-red-400/25 px-3.5 py-2.5 flex items-start gap-2.5 text-xs text-red-200">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
-            <span>{syncError}</span>
+        {/* Sync Error Banner */}
+        {syncState.status === 'error' && syncState.error && (
+          <div className="rounded-xl bg-red-500/12 border border-red-400/25 px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-red-200">
+            <div className="flex items-start gap-2.5 min-w-0">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+              <span className="break-words">{syncState.error}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void fetchVehiclesFromRemote()}
+              className="shrink-0 px-2.5 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-100 font-semibold cursor-pointer"
+            >
+              Retry
+            </button>
           </div>
         )}
 
@@ -715,7 +689,6 @@ export function App() {
       {selectedVehicle && (
         <VehicleDetailDrawer
           vehicle={selectedVehicle}
-          mode={currentUser.mode}
           onClose={() => setSelectedVehicle(null)}
           onSave={handleSaveVehicle}
           onToggleChecklist={handleToggleChecklist}
@@ -727,13 +700,10 @@ export function App() {
         <SettingsModal
           user={currentUser}
           vehicles={vehicles}
+          syncState={syncState}
           onClose={() => setShowSettings(false)}
           onSelectLocalUser={handleSelectLocalUser}
-          onSignOutFirebase={async () => {
-            await logoutFirebase();
-            showToast('Signed out');
-          }}
-          onFirebaseConfigChanged={handleFirebaseConfigChanged}
+          onLockApp={handleLockApp}
         />
       )}
 

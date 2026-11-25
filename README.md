@@ -19,7 +19,7 @@ Once published to GitHub with Pages enabled (`Settings → Pages → Source: Git
 - **One-Tap Status Progression:** Move any unit to the next stage straight from the card or jump to any status via the quick dropdown.
 - **NHTSA VIN Auto-Decode:** Enter a 17-character VIN in the Quick-Add modal or Detail Drawer to auto-fill Year, Make, Model, and Trim.
 - **Per-User Field-Level Activity History:** Every change made to any vehicle field (status, location, mileage, cost, ETA, notes, VIN/specs, photo, archive/restore) is logged automatically with exact before/after values, user name, and timestamp.
-- **Real-Time Sync + Offline Lot Mode:** Works out of the box in Local Team Mode and connects to **Firebase Firestore + Auth** (with IndexedDB offline caching) in 5 minutes via `firebase/FIREBASE_SETUP.md` or right inside **Settings → Cloud Sync**.
+- **Google Sheets Live Sync + Shop PIN:** Protected by a 4-digit shop PIN (remembered per device) and synced across all team phones via Google Apps Script (`GET` on load and every 10 seconds; `POST` on every add, edit, move, or delete).
 - **One-Click CSV Backup & Optional Import:** Export your full lot inventory as a `.csv` (with native iOS/Android Share Sheets inside `.APK`/`.IPA`) or import vehicles from a CSV anytime.
 
 ## Project Layout
@@ -28,7 +28,6 @@ Once published to GitHub with Pages enabled (`Settings → Pages → Source: Git
 | :--- | :--- |
 | `landing/` | GitHub Pages Landing Hub (`index.html` + icons) |
 | `app/` | React + Vite + TypeScript + Tailwind CSS + `vite-plugin-pwa` web app |
-| `firebase/` | Firestore email-allowlist `firestore.rules`, indexes, and 5-minute setup guide |
 | `android_app/` | Native Android WebView Gradle wrapper (`build_apk.sh`) |
 | `ios_app/` | Native Swift 5 `WKWebView` XcodeGen wrapper (`project.yml`, `build_ipa.sh`) |
 | `.github/workflows/` | Automated GitHub Pages, Android `.APK`, and iOS `.IPA` release pipelines |

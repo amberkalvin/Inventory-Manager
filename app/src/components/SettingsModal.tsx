@@ -3,82 +3,49 @@ import {
   Cloud,
   CloudOff,
   Download,
-  LogOut,
-  RotateCcw,
+  Lock,
+  RefreshCw,
   Smartphone,
   Upload,
   UserCheck,
   X,
 } from 'lucide-react';
 import { DEFAULT_TEAM_MEMBERS } from '../data/mockVehicles';
-import type { FirebaseConfig, TeamUser, Vehicle } from '../types/vehicle';
+import type { SyncState, TeamUser, Vehicle } from '../types/vehicle';
 import { exportVehiclesToCsv, parseCsvVehicles } from '../services/csvService';
-import {
-  clearRuntimeFirebaseConfig,
-  getEnvFirebaseConfig,
-  getSavedFirebaseConfig,
-  saveRuntimeFirebaseConfig,
-} from '../services/firebase';
-import { bulkImportVehicles, resetLocalDemoData } from '../services/vehicleService';
+import { bulkImportVehicles, fetchVehiclesFromRemote } from '../services/vehicleService';
+import { formatRelativeTime } from '../utils/format';
 import { triggerHaptic } from '../services/nativeBridge';
 
 interface SettingsModalProps {
   user: TeamUser;
   vehicles: Vehicle[];
+  syncState: SyncState;
   onClose: () => void;
   onSelectLocalUser: (name: string, email: string) => void;
-  onSignOutFirebase: () => Promise<void>;
-  onFirebaseConfigChanged: () => Promise<void>;
+  onLockApp: () => void;
 }
 
 export function SettingsModal({
   user,
   vehicles,
+  syncState,
   onClose,
   onSelectLocalUser,
-  onSignOutFirebase,
-  onFirebaseConfigChanged,
+  onLockApp,
 }: SettingsModalProps) {
-  const envConfigured = Boolean(getEnvFirebaseConfig());
-  const savedConfig = getSavedFirebaseConfig();
-
-  const [configText, setConfigText] = useState(
-    savedConfig ? JSON.stringify(savedConfig, null, 2) : ''
-  );
-  const [configFeedback, setConfigFeedback] = useState('');
   const [importFeedback, setImportFeedback] = useState('');
+  const [syncingNow, setSyncingNow] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleSaveCloudConfig = async () => {
-    setConfigFeedback('');
+  const handleManualSync = async () => {
+    triggerHaptic('light');
+    setSyncingNow(true);
     try {
-      // Allow pasting either strict JSON or raw Firebase JS object snippet
-      const cleaned = configText
-        .trim()
-        .replace(/const\s+\w+\s*=\s*/, '')
-        .replace(/;\s*$/, '')
-        .replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":')
-        .replace(/'/g, '"');
-      const parsed = JSON.parse(cleaned) as Partial<FirebaseConfig>;
-      if (!parsed.apiKey || !parsed.authDomain || !parsed.projectId || !parsed.appId) {
-        setConfigFeedback('Missing required fields: apiKey, authDomain, projectId, appId.');
-        return;
-      }
-      saveRuntimeFirebaseConfig(parsed as FirebaseConfig);
-      triggerHaptic('success');
-      await onFirebaseConfigChanged();
-      onClose();
-    } catch {
-      setConfigFeedback('Could not parse Firebase config. Paste the firebaseConfig object from Firebase Console.');
+      await fetchVehiclesFromRemote();
+    } finally {
+      setSyncingNow(false);
     }
-  };
-
-  const handleDisconnectCloud = async () => {
-    clearRuntimeFirebaseConfig();
-    triggerHaptic('medium');
-    await onFirebaseConfigChanged();
-    setConfigText('');
-    setConfigFeedback('Switched back to Local Team Mode.');
   };
 
   const handleCsvFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,7 +61,7 @@ export function SettingsModal({
       }
       const count = await bulkImportVehicles(user, parsed);
       triggerHaptic('success');
-      setImportFeedback(`Imported ${count} vehicle${count === 1 ? '' : 's'} into inventory.`);
+      setImportFeedback(`Imported ${count} vehicle${count === 1 ? '' : 's'} and synced to Google Sheets.`);
     } catch (err) {
       setImportFeedback(err instanceof Error ? err.message : 'Import failed.');
     } finally {
@@ -114,7 +81,7 @@ export function SettingsModal({
         <div className="px-5 py-4 border-b border-white/[0.08] flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-white tracking-tight">Settings &amp; Sync</h2>
-            <p className="text-xs text-slate-400">Team identity, real-time cloud sync &amp; backups</p>
+            <p className="text-xs text-slate-400">Team identity, Google Sheets sync &amp; backups</p>
           </div>
           <button
             type="button"
@@ -134,115 +101,98 @@ export function SettingsModal({
                 <UserCheck className="w-4 h-4 text-sky-400" />
                 <h3 className="text-sm font-semibold text-white">Active Team Member</h3>
               </div>
-              <span
-                className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${
-                  user.mode === 'firebase'
-                    ? 'bg-emerald-500/15 text-emerald-300'
-                    : 'bg-sky-500/15 text-sky-300'
-                }`}
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('medium');
+                  onLockApp();
+                  onClose();
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/12 text-[11px] font-semibold text-slate-300 cursor-pointer"
               >
-                {user.mode === 'firebase' ? 'Firebase Live' : 'Local Mode'}
+                <Lock className="w-3 h-3" />
+                Lock PIN
+              </button>
+            </div>
+
+            <div>
+              <p className="text-xs text-slate-400 mb-2.5">
+                Choose who is logging updates on this phone (recorded on every vehicle edit &amp; checklist toggle):
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {DEFAULT_TEAM_MEMBERS.map((member) => {
+                  const active = member.email === user.email;
+                  return (
+                    <button
+                      key={member.email}
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        onSelectLocalUser(member.name, member.email);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                        active
+                          ? 'bg-sky-500/20 border-sky-400/50 text-sky-300'
+                          : 'bg-white/[0.04] border-white/[0.08] text-slate-300 hover:bg-white/[0.08]'
+                      }`}
+                    >
+                      {member.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+
+          {/* Google Sheets Live Sync Status */}
+          <section className="rounded-2xl bg-[#0D1119] border border-white/[0.08] p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                {syncState.status === 'offline' || syncState.status === 'error' ? (
+                  <CloudOff className="w-4 h-4 text-amber-400" />
+                ) : (
+                  <Cloud className="w-4 h-4 text-emerald-400" />
+                )}
+                <h3 className="text-sm font-semibold text-white">Google Sheets Sync</h3>
+              </div>
+              <button
+                type="button"
+                disabled={syncingNow || syncState.status === 'syncing'}
+                onClick={handleManualSync}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/12 text-xs font-semibold text-sky-300 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${
+                    syncingNow || syncState.status === 'syncing' ? 'animate-spin' : ''
+                  }`}
+                />
+                Sync Now
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Automatically pulls the latest lot inventory every 10 seconds and pushes every add, edit, move, or delete directly to your connected Google Sheet.
+            </p>
+
+            <div className="text-xs text-slate-300 flex items-center justify-between pt-1 border-t border-white/[0.06]">
+              <span>Status</span>
+              <span className="font-mono-code text-[11px] text-slate-300">
+                {syncState.status === 'synced' && syncState.lastSyncedAt
+                  ? `Synced ${formatRelativeTime(syncState.lastSyncedAt)}`
+                  : syncState.status === 'syncing'
+                    ? 'Syncing…'
+                    : syncState.status === 'offline'
+                      ? 'Offline (using cache)'
+                      : syncState.status === 'error'
+                        ? 'Sync Error'
+                        : 'Connecting…'}
               </span>
             </div>
 
-            {user.mode === 'firebase' ? (
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-white truncate">{user.name}</div>
-                  <div className="text-xs text-slate-400 truncate">{user.email}</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await onSignOutFirebase();
-                    onClose();
-                  }}
-                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.07] hover:bg-white/12 text-xs font-semibold text-slate-200 cursor-pointer"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  Sign Out
-                </button>
-              </div>
-            ) : (
-              <div>
-                <p className="text-xs text-slate-400 mb-2.5">
-                  Choose who is logging updates on this device (connect Firebase below for multi-phone live sync):
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {DEFAULT_TEAM_MEMBERS.map((member) => {
-                    const active = member.email === user.email;
-                    return (
-                      <button
-                        key={member.email}
-                        type="button"
-                        onClick={() => {
-                          triggerHaptic('light');
-                          onSelectLocalUser(member.name, member.email);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
-                          active
-                            ? 'bg-sky-500/20 border-sky-400/50 text-sky-300'
-                            : 'bg-white/[0.04] border-white/[0.08] text-slate-300 hover:bg-white/[0.08]'
-                        }`}
-                      >
-                        {member.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* Firebase Real-Time Sync */}
-          <section className="rounded-2xl bg-[#0D1119] border border-white/[0.08] p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              {savedConfig ? (
-                <Cloud className="w-4 h-4 text-emerald-400" />
-              ) : (
-                <CloudOff className="w-4 h-4 text-slate-400" />
-              )}
-              <h3 className="text-sm font-semibold text-white">Real-Time Cloud Sync (Firebase)</h3>
-            </div>
-
-            {envConfigured ? (
-              <p className="text-xs text-emerald-300/90 leading-relaxed">
-                Connected automatically via build configuration ({savedConfig?.projectId}). Changes sync live across all authorized team phones with offline lot caching enabled.
+            {syncState.error && (
+              <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-400/20 rounded-xl px-3 py-2">
+                {syncState.error}
               </p>
-            ) : (
-              <>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Paste your <code className="font-mono-code text-slate-300">firebaseConfig</code> from Firebase Console to enable live multi-device Firestore sync &amp; team login without rebuilding.
-                </p>
-                <textarea
-                  rows={4}
-                  value={configText}
-                  onChange={(e) => setConfigText(e.target.value)}
-                  placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","appId":"..."}'
-                  className="field-input font-mono-code text-xs resize-none"
-                />
-                {configFeedback && (
-                  <p className="text-xs text-amber-300">{configFeedback}</p>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSaveCloudConfig}
-                    className="flex-1 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs cursor-pointer"
-                  >
-                    Connect Firebase Sync
-                  </button>
-                  {savedConfig && (
-                    <button
-                      type="button"
-                      onClick={handleDisconnectCloud}
-                      className="px-3.5 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/10 text-slate-300 font-semibold text-xs cursor-pointer"
-                    >
-                      Disconnect
-                    </button>
-                  )}
-                </div>
-              </>
             )}
           </section>
 
@@ -280,21 +230,6 @@ export function SettingsModal({
             </div>
             {importFeedback && (
               <p className="text-xs text-emerald-400 font-medium">{importFeedback}</p>
-            )}
-
-            {user.mode === 'local' && (
-              <button
-                type="button"
-                onClick={() => {
-                  resetLocalDemoData();
-                  triggerHaptic('medium');
-                  setImportFeedback('Restored sample lot inventory.');
-                }}
-                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Reset Sample Inventory Data
-              </button>
             )}
           </section>
 

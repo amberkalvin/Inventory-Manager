@@ -21,6 +21,21 @@ export const VEHICLE_CHECKLIST_ITEMS: ChecklistItemDef[] = [
   { key: 'pictures', label: 'Pictures' },
 ];
 
+export interface HistoryChange {
+  field: string;
+  from?: string;
+  to?: string;
+}
+
+export interface HistoryEntry {
+  id: string;
+  timestamp: string; // ISO timestamp
+  userEmail: string;
+  userName: string;
+  action: string;
+  changes?: HistoryChange[];
+}
+
 export interface Vehicle {
   id: string;
   stockNumber?: string;
@@ -41,24 +56,10 @@ export interface Vehicle {
   assignedTo?: string;
   checklist?: VehicleChecklist;
   photoUrl?: string; // Compressed JPEG data URL or hosted image URL
+  history?: HistoryEntry[];
   updatedAt: string; // ISO timestamp
   updatedBy: string;
   createdAt: string; // ISO timestamp
-}
-
-export interface HistoryChange {
-  field: string;
-  from?: string;
-  to?: string;
-}
-
-export interface HistoryEntry {
-  id: string;
-  timestamp: string; // ISO timestamp
-  userEmail: string;
-  userName: string;
-  action: string;
-  changes?: HistoryChange[];
 }
 
 export interface StatusMeta {
@@ -99,7 +100,13 @@ export function getVehicleLabel(
 
 export function normalizeVehicleStatus(raw: unknown): VehicleStatus {
   const val = String(raw ?? '').toLowerCase().trim();
-  if (val === 'incoming' || val === 'minor_repair' || val === 'major_repair' || val === 'offsite' || val === 'ready') {
+  if (
+    val === 'incoming' ||
+    val === 'minor_repair' ||
+    val === 'major_repair' ||
+    val === 'offsite' ||
+    val === 'ready'
+  ) {
     return val;
   }
   // Gracefully map any legacy "sold" records into archived Frontline Ready
@@ -160,17 +167,13 @@ export const STATUS_META: Record<VehicleStatus, StatusMeta> = {
   },
 };
 
-export interface FirebaseConfig {
-  apiKey: string;
-  authDomain: string;
-  projectId: string;
-  storageBucket?: string;
-  messagingSenderId?: string;
-  appId: string;
-}
-
 export interface TeamUser {
   name: string;
   email: string;
-  mode: 'firebase' | 'local';
+}
+
+export interface SyncState {
+  status: 'idle' | 'syncing' | 'synced' | 'error' | 'offline';
+  lastSyncedAt?: string;
+  error?: string;
 }
