@@ -176,14 +176,15 @@ function normalizeVehicleRecord(raw: Record<string, unknown>, fallbackIndex = 0)
         : updatedAt
       : undefined,
     location: normalizeOptionalString(raw.location),
+    offsiteLocation:
+      normalizeOptionalString(raw.offsiteLocation) ??
+      normalizeOptionalString(raw.contact),
     repairNotes:
       normalizeOptionalString(raw.repairNotes) ?? normalizeOptionalString(raw.needs),
     estimatedCost: parseOptionalNumber(raw.estimatedCost),
     expectedReturnDate:
       normalizeOptionalString(raw.expectedReturnDate) ??
       normalizeOptionalString(raw.dateSent),
-    assignedTo:
-      normalizeOptionalString(raw.assignedTo) ?? normalizeOptionalString(raw.contact),
     checklist: normalizeChecklist(raw.checklist),
     photoUrl: normalizeOptionalString(raw.photoUrl),
     history: normalizeHistoryEntries(raw.history),
@@ -199,12 +200,12 @@ function serializeVehicleForRemote(v: Vehicle): Record<string, unknown> {
     stockNumber: v.stockNumber ?? '',
     color: v.color ?? '',
     location: v.location ?? '',
+    offsiteLocation: v.offsiteLocation ?? '',
+    contact: v.offsiteLocation ?? '',
     needs: v.repairNotes ?? '',
     repairNotes: v.repairNotes ?? '',
     dateSent: v.expectedReturnDate ?? '',
     expectedReturnDate: v.expectedReturnDate ?? '',
-    contact: v.assignedTo ?? '',
-    assignedTo: v.assignedTo ?? '',
   };
 }
 
@@ -612,8 +613,8 @@ function buildVehicleChanges(
   if (has('location')) {
     pushStringDiff('Location', previous.location, nextUpdates.location);
   }
-  if (has('assignedTo')) {
-    pushStringDiff('Assigned To', previous.assignedTo, nextUpdates.assignedTo);
+  if (has('offsiteLocation')) {
+    pushStringDiff('Offsite Location', previous.offsiteLocation, nextUpdates.offsiteLocation);
   }
   if (has('estimatedCost')) {
     pushNumberDiff('Est. Cost', previous.estimatedCost, nextUpdates.estimatedCost, formatCurrency);
@@ -727,7 +728,9 @@ export async function createVehicle(
     initialChanges.push({ field: 'Archive', to: 'Archived (Frontline Ready)' });
   }
   if (input.location) initialChanges.push({ field: 'Location', to: input.location });
-  if (input.assignedTo) initialChanges.push({ field: 'Assigned To', to: input.assignedTo });
+  if (input.offsiteLocation) {
+    initialChanges.push({ field: 'Offsite Location', to: input.offsiteLocation });
+  }
   if (input.mileage !== undefined) {
     initialChanges.push({ field: 'Mileage', to: formatMileage(input.mileage) });
   }

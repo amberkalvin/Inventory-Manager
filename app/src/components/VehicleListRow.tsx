@@ -1,5 +1,13 @@
 import { useState } from 'react';
-import { Archive, ArrowRight, CheckSquare, ChevronDown, MapPin, RotateCcw } from 'lucide-react';
+import {
+  Archive,
+  ArrowRight,
+  Building2,
+  CheckSquare,
+  ChevronDown,
+  MapPin,
+  RotateCcw,
+} from 'lucide-react';
 import {
   isVehicleArchived,
   STATUS_META,
@@ -96,6 +104,12 @@ export function VehicleListRow({
             <span className="inline-flex items-center gap-1 text-slate-300 font-medium truncate max-w-[160px] sm:max-w-xs">
               <MapPin className="w-3 h-3 text-sky-400 shrink-0" />
               <span className="truncate">{vehicle.location}</span>
+            </span>
+          )}
+          {vehicle.offsiteLocation && (
+            <span className="inline-flex items-center gap-1 text-orange-300/90 font-medium truncate max-w-[160px] sm:max-w-xs">
+              <Building2 className="w-3 h-3 shrink-0" />
+              <span className="truncate">{vehicle.offsiteLocation}</span>
             </span>
           )}
           {vehicle.mileage !== undefined && (

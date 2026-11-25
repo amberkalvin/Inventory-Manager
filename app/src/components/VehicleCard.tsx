@@ -2,12 +2,12 @@ import { useState } from 'react';
 import {
   Archive,
   ArrowRight,
+  Building2,
   CalendarClock,
   CheckSquare,
   ChevronDown,
   MapPin,
   RotateCcw,
-  User,
   Wrench,
 } from 'lucide-react';
 import {
@@ -194,10 +194,10 @@ export function VehicleCard({
             </span>
           )}
           {vehicle.color && <span>{vehicle.color}</span>}
-          {vehicle.assignedTo && (
-            <span className="inline-flex items-center gap-1 text-slate-400">
-              <User className="w-3.5 h-3.5 shrink-0" />
-              {vehicle.assignedTo}
+          {vehicle.offsiteLocation && (
+            <span className="inline-flex items-center gap-1 text-orange-300/90 font-medium">
+              <Building2 className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate max-w-[180px]">{vehicle.offsiteLocation}</span>
             </span>
           )}
           {vehicle.expectedReturnDate && !archived && (

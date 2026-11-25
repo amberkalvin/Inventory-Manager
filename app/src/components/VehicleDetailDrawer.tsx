@@ -64,7 +64,7 @@ export function VehicleDetailDrawer({
     vehicle.mileage !== undefined ? String(vehicle.mileage) : ''
   );
   const [location, setLocation] = useState(vehicle.location ?? '');
-  const [assignedTo, setAssignedTo] = useState(vehicle.assignedTo ?? '');
+  const [offsiteLocation, setOffsiteLocation] = useState(vehicle.offsiteLocation ?? '');
   const [estimatedCost, setEstimatedCost] = useState(
     vehicle.estimatedCost !== undefined ? String(vehicle.estimatedCost) : ''
   );
@@ -94,7 +94,7 @@ export function VehicleDetailDrawer({
       setMileage(vehicle.mileage !== undefined ? String(vehicle.mileage) : '');
     }
     if (!dirty.has('location')) setLocation(vehicle.location ?? '');
-    if (!dirty.has('assignedTo')) setAssignedTo(vehicle.assignedTo ?? '');
+    if (!dirty.has('offsiteLocation')) setOffsiteLocation(vehicle.offsiteLocation ?? '');
     if (!dirty.has('estimatedCost')) {
       setEstimatedCost(
         vehicle.estimatedCost !== undefined ? String(vehicle.estimatedCost) : ''
@@ -211,7 +211,9 @@ export function VehicleDetailDrawer({
     }
     if (dirty.has('status')) updates.status = status;
     if (dirty.has('location')) updates.location = location.trim() || undefined;
-    if (dirty.has('assignedTo')) updates.assignedTo = assignedTo.trim() || undefined;
+    if (dirty.has('offsiteLocation')) {
+      updates.offsiteLocation = offsiteLocation.trim() || undefined;
+    }
     if (dirty.has('estimatedCost')) {
       updates.estimatedCost = estimatedCost.trim()
         ? Number(estimatedCost.replace(/[^0-9.]/g, ''))
@@ -479,11 +481,11 @@ export function VehicleDetailDrawer({
               </div>
             </div>
 
-            {/* Location & Assignment */}
+            {/* Location & Offsite Location */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">
-                  Location / Shop
+                  Location
                 </label>
                 <input
                   type="text"
@@ -492,22 +494,22 @@ export function VehicleDetailDrawer({
                     markDirty('location');
                     setLocation(e.target.value);
                   }}
-                  placeholder="Main Lot / Shop"
+                  placeholder="Main Lot / Bay"
                   className="field-input"
                 />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">
-                  Assigned To
+                  Offsite Location
                 </label>
                 <input
                   type="text"
-                  value={assignedTo}
+                  value={offsiteLocation}
                   onChange={(e) => {
-                    markDirty('assignedTo');
-                    setAssignedTo(e.target.value);
+                    markDirty('offsiteLocation');
+                    setOffsiteLocation(e.target.value);
                   }}
-                  placeholder="Team member"
+                  placeholder="Body shop, mechanic..."
                   className="field-input"
                 />
               </div>

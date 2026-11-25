@@ -8,14 +8,12 @@ import { VehicleThumbnail } from './VehicleThumbnail';
 
 interface QuickAddModalProps {
   suggestedStock: string;
-  defaultAssignee: string;
   onClose: () => void;
   onSubmit: (input: NewVehicleInput) => Promise<void>;
 }
 
 export function QuickAddModal({
   suggestedStock,
-  defaultAssignee,
   onClose,
   onSubmit,
 }: QuickAddModalProps) {
@@ -33,7 +31,7 @@ export function QuickAddModal({
   const [mileage, setMileage] = useState('');
   const [status, setStatus] = useState<VehicleStatus>('incoming');
   const [location, setLocation] = useState('Main Lot');
-  const [assignedTo, setAssignedTo] = useState(defaultAssignee);
+  const [offsiteLocation, setOffsiteLocation] = useState('');
   const [estimatedCost, setEstimatedCost] = useState('');
   const [expectedReturnDate, setExpectedReturnDate] = useState('');
   const [repairNotes, setRepairNotes] = useState('');
@@ -93,7 +91,7 @@ export function QuickAddModal({
         mileage: mileage.trim() ? Number(mileage.replace(/[^0-9]/g, '')) : undefined,
         status,
         location: location.trim() || undefined,
-        assignedTo: assignedTo.trim() || undefined,
+        offsiteLocation: offsiteLocation.trim() || undefined,
         estimatedCost: estimatedCost.trim()
           ? Number(estimatedCost.replace(/[^0-9.]/g, ''))
           : undefined,
@@ -350,7 +348,7 @@ export function QuickAddModal({
             </div>
             <div>
               <label htmlFor="add-location" className="block text-xs font-medium text-slate-400 mb-1">
-                Location / Shop
+                Location
               </label>
               <input
                 id="add-location"
@@ -362,15 +360,15 @@ export function QuickAddModal({
               />
             </div>
             <div>
-              <label htmlFor="add-assigned" className="block text-xs font-medium text-slate-400 mb-1">
-                Assigned To
+              <label htmlFor="add-offsite" className="block text-xs font-medium text-slate-400 mb-1">
+                Offsite Location
               </label>
               <input
-                id="add-assigned"
+                id="add-offsite"
                 type="text"
-                placeholder="Team member"
-                value={assignedTo}
-                onChange={(e) => setAssignedTo(e.target.value)}
+                placeholder="Body shop, mechanic..."
+                value={offsiteLocation}
+                onChange={(e) => setOffsiteLocation(e.target.value)}
                 className="field-input"
               />
             </div>

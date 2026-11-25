@@ -15,7 +15,6 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
-import { DEFAULT_TEAM_MEMBERS } from './data/mockVehicles';
 import {
   getVehicleLabel,
   isVehicleArchived,
@@ -37,16 +36,21 @@ import {
   updateVehicle,
   type NewVehicleInput,
 } from './services/vehicleService';
+import {
+  getSavedUserName,
+  isShopPinUnlocked,
+  lockShopPin,
+  saveUserName,
+} from './services/shopAuth';
 import { StatusSummaryBar, type StatusFilter } from './components/StatusSummaryBar';
 import { VehicleCard } from './components/VehicleCard';
 import { VehicleListRow } from './components/VehicleListRow';
 import { QuickAddModal } from './components/QuickAddModal';
 import { VehicleDetailDrawer } from './components/VehicleDetailDrawer';
 import { SettingsModal } from './components/SettingsModal';
-import { AuthGate, isShopPinUnlocked, lockShopPin } from './components/AuthGate';
+import { AuthGate } from './components/AuthGate';
 import { triggerHaptic } from './services/nativeBridge';
 
-const LOCAL_USER_KEY = 'im_local_user_v1';
 const VIEW_MODE_KEY = 'im_view_mode_v1';
 
 function loadViewMode(): 'cards' | 'list' {
@@ -57,27 +61,15 @@ function loadViewMode(): 'cards' | 'list' {
   }
 }
 
-function loadLocalUser(): TeamUser {
-  try {
-    const raw = localStorage.getItem(LOCAL_USER_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as { name?: string; email?: string };
-      if (parsed.name && parsed.email) {
-        return { name: parsed.name, email: parsed.email };
-      }
-    }
-  } catch {
-    // Fallback to default member
-  }
-  return {
-    name: DEFAULT_TEAM_MEMBERS[0].name,
-    email: DEFAULT_TEAM_MEMBERS[0].email,
-  };
-}
-
 export function App() {
-  const [unlocked, setUnlocked] = useState<boolean>(isShopPinUnlocked);
-  const [currentUser, setCurrentUser] = useState<TeamUser>(loadLocalUser);
+  const [userName, setUserName] = useState<string>(() => getSavedUserName());
+  const [unlocked, setUnlocked] = useState<boolean>(
+    () => isShopPinUnlocked() && Boolean(getSavedUserName())
+  );
+  const currentUser: TeamUser = useMemo(
+    () => ({ name: userName || 'Shop', email: '' }),
+    [userName]
+  );
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [syncState, setSyncState] = useState<SyncState>({ status: 'idle' });
@@ -175,7 +167,7 @@ export function App() {
         v.trim ?? '',
         v.color ?? '',
         v.location ?? '',
-        v.assignedTo ?? '',
+        v.offsiteLocation ?? '',
         v.repairNotes ?? '',
       ]
         .join(' ')
@@ -197,15 +189,16 @@ export function App() {
     return `STK-${maxNum + 1}`;
   }, [vehicles]);
 
-  const handleSelectLocalUser = (name: string, email: string) => {
-    const next: TeamUser = { name, email };
-    setCurrentUser(next);
-    try {
-      localStorage.setItem(LOCAL_USER_KEY, JSON.stringify({ name, email }));
-    } catch {
-      // Ignore storage errors
-    }
-    showToast(`Switched to ${name}`);
+  const handleUpdateUserName = (name: string) => {
+    const cleaned = saveUserName(name);
+    if (!cleaned) return;
+    setUserName(cleaned);
+    showToast(`Name updated to ${cleaned}`);
+  };
+
+  const handleAuthenticated = (name: string) => {
+    setUserName(name);
+    setUnlocked(true);
   };
 
   const handleLockApp = () => {
@@ -322,9 +315,9 @@ export function App() {
     showToast('Removed vehicle from inventory');
   };
 
-  // Require 4-digit shop PIN until stored in localStorage
+  // Require 4-digit shop PIN and user name on first login
   if (!unlocked) {
-    return <AuthGate onUnlocked={() => setUnlocked(true)} />;
+    return <AuthGate onAuthenticated={handleAuthenticated} />;
   }
 
   return (
@@ -680,7 +673,6 @@ export function App() {
       {showQuickAdd && (
         <QuickAddModal
           suggestedStock={suggestedStock}
-          defaultAssignee={currentUser.name}
           onClose={() => setShowQuickAdd(false)}
           onSubmit={handleCreateVehicle}
         />
@@ -703,7 +695,7 @@ export function App() {
           vehicles={vehicles}
           syncState={syncState}
           onClose={() => setShowSettings(false)}
-          onSelectLocalUser={handleSelectLocalUser}
+          onUpdateUserName={handleUpdateUserName}
           onLockApp={handleLockApp}
         />
       )}

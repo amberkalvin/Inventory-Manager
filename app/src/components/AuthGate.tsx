@@ -1,28 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Delete, Lock } from 'lucide-react';
+import { ArrowRight, Delete, Lock, User } from 'lucide-react';
+import {
+  getSavedUserName,
+  isShopPinUnlocked,
+  saveUserName,
+  verifyAndStoreShopPin,
+} from '../services/shopAuth';
 import { triggerHaptic } from '../services/nativeBridge';
 
-const SHOP_PIN = '4115';
-const SHOP_PIN_STORAGE_KEY = 'im_shop_pin_v2';
-
-export function isShopPinUnlocked(): boolean {
-  try {
-    return localStorage.getItem(SHOP_PIN_STORAGE_KEY) === SHOP_PIN;
-  } catch {
-    return false;
-  }
-}
-
-export function lockShopPin(): void {
-  try {
-    localStorage.removeItem(SHOP_PIN_STORAGE_KEY);
-  } catch {
-    // Ignore storage errors
-  }
-}
-
 interface AuthGateProps {
-  onUnlocked: () => void;
+  onAuthenticated: (userName: string) => void;
 }
 
 const KEYPAD_ROWS = [
@@ -32,25 +19,34 @@ const KEYPAD_ROWS = [
   ['clear', '0', 'back'],
 ] as const;
 
-export function AuthGate({ onUnlocked }: AuthGateProps) {
+export function AuthGate({ onAuthenticated }: AuthGateProps) {
+  const [step, setStep] = useState<'pin' | 'name'>(() =>
+    isShopPinUnlocked() ? 'name' : 'pin'
+  );
   const [pin, setPin] = useState('');
+  const [name, setName] = useState(() => getSavedUserName());
   const [error, setError] = useState('');
 
   const handleDigit = (digit: string) => {
+    if (step !== 'pin') return;
     setError('');
     triggerHaptic('light');
     setPin((prev) => {
       if (prev.length >= 4) return prev;
       const next = prev + digit;
       if (next.length === 4) {
-        if (next === SHOP_PIN) {
-          try {
-            localStorage.setItem(SHOP_PIN_STORAGE_KEY, SHOP_PIN);
-          } catch {
-            // Ignore storage errors
-          }
+        if (verifyAndStoreShopPin(next)) {
           triggerHaptic('success');
-          window.setTimeout(() => onUnlocked(), 80);
+          const existingName = getSavedUserName();
+          if (existingName) {
+            window.setTimeout(() => onAuthenticated(existingName), 80);
+          } else {
+            window.setTimeout(() => {
+              setPin('');
+              setError('');
+              setStep('name');
+            }, 80);
+          }
           return next;
         }
         triggerHaptic('medium');
@@ -63,18 +59,21 @@ export function AuthGate({ onUnlocked }: AuthGateProps) {
   };
 
   const handleBackspace = () => {
+    if (step !== 'pin') return;
     triggerHaptic('light');
     setError('');
     setPin((prev) => prev.slice(0, -1));
   };
 
   const handleClear = () => {
+    if (step !== 'pin') return;
     triggerHaptic('light');
     setError('');
     setPin('');
   };
 
   useEffect(() => {
+    if (step !== 'pin') return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (/^[0-9]$/.test(e.key)) {
         e.preventDefault();
@@ -90,6 +89,81 @@ export function AuthGate({ onUnlocked }: AuthGateProps) {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   });
+
+  const handleNameSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleaned = name.trim();
+    if (!cleaned) {
+      setError('Please enter your name so vehicle changes can be tracked.');
+      return;
+    }
+    triggerHaptic('success');
+    saveUserName(cleaned);
+    onAuthenticated(cleaned);
+  };
+
+  if (step === 'name') {
+    return (
+      <main className="min-h-screen flex items-center justify-center px-4 py-10 bg-[#0B0E14]">
+        <div className="w-full max-w-xs surface-card rounded-3xl p-6 space-y-5 shadow-2xl">
+          <div className="flex flex-col items-center text-center space-y-2.5">
+            <img
+              src="./apple-touch-icon.png"
+              alt="Inventory Manager"
+              className="w-14 h-14 rounded-2xl border border-white/10 shadow-lg"
+            />
+            <div>
+              <h1 className="text-xl font-extrabold text-white tracking-tight">
+                Welcome!
+              </h1>
+              <p className="mt-1 text-xs text-slate-400">
+                Enter your name so edits and history log who made each change.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleNameSubmit} className="space-y-3.5">
+            <div>
+              <label
+                htmlFor="login-user-name"
+                className="block text-xs font-medium text-slate-400 mb-1.5"
+              >
+                Your Name
+              </label>
+              <div className="relative">
+                <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  id="login-user-name"
+                  type="text"
+                  autoFocus
+                  required
+                  value={name}
+                  onChange={(e) => {
+                    setError('');
+                    setName(e.target.value);
+                  }}
+                  placeholder="e.g. Alex"
+                  className="field-input pl-10"
+                />
+              </div>
+            </div>
+
+            {error && (
+              <p className="text-xs font-medium text-red-400">{error}</p>
+            )}
+
+            <button
+              type="submit"
+              className="w-full py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-sm transition-colors inline-flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <span>Continue to Inventory</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen flex items-center justify-center px-4 py-10 bg-[#0B0E14]">

@@ -23,10 +23,10 @@ const CSV_HEADERS = [
   'Archived At',
   'Checklist',
   'Location',
+  'Offsite Location',
   'Repair Notes',
   'Estimated Cost',
   'Date Sent',
-  'Assigned To',
   'Updated By',
   'Updated At',
 ];
@@ -60,10 +60,10 @@ export function exportVehiclesToCsv(vehicles: Vehicle[]): void {
           .map((item) => item.label)
           .join('; '),
         v.location ?? '',
+        v.offsiteLocation ?? '',
         v.repairNotes ?? '',
         v.estimatedCost ?? '',
         v.expectedReturnDate ?? '',
-        v.assignedTo ?? '',
         v.updatedBy,
         v.updatedAt,
       ]
@@ -135,11 +135,11 @@ export function parseCsvVehicles(csvText: string): NewVehicleInput[] {
   const iColor = col('color', 'extcolor');
   const iMiles = col('mileage', 'miles', 'odo');
   const iStatus = col('status', 'stage', 'tab');
-  const iLocation = col('location', 'spot', 'shop');
-  const iNotes = col('repairnotes', 'notes', 'comment', 'issue');
+  const iLocation = col('location', 'spot');
+  const iOffsite = col('offsitelocation', 'offsite', 'shop', 'contact');
+  const iNotes = col('repairnotes', 'needs', 'notes', 'comment', 'issue');
   const iCost = col('estimatedcost', 'cost', 'est');
   const iEta = col('datesent', 'sent', 'expectedreturndate', 'eta', 'return');
-  const iAssigned = col('assignedto', 'assigned', 'owner', 'tech');
   const iChecklist = col('checklist', 'prep');
 
   const out: NewVehicleInput[] = [];
@@ -177,10 +177,10 @@ export function parseCsvVehicles(csvText: string): NewVehicleInput[] {
       mileage: Number.isFinite(milesNum) && milesNum > 0 ? Math.round(milesNum) : undefined,
       status: normalizeStatus(get(iStatus)),
       location: get(iLocation) || undefined,
+      offsiteLocation: get(iOffsite) || undefined,
       repairNotes: get(iNotes) || undefined,
       estimatedCost: Number.isFinite(costNum) && costNum > 0 ? Math.round(costNum) : undefined,
       expectedReturnDate: get(iEta) || undefined,
-      assignedTo: get(iAssigned) || undefined,
       checklist,
     });
   }

@@ -50,10 +50,10 @@ export interface Vehicle {
   archived?: boolean;
   archivedAt?: string; // ISO timestamp
   location?: string;
+  offsiteLocation?: string;
   repairNotes?: string;
   estimatedCost?: number;
   expectedReturnDate?: string; // ISO YYYY-MM-DD
-  assignedTo?: string;
   checklist?: VehicleChecklist;
   photoUrl?: string; // Compressed JPEG data URL or hosted image URL
   history?: HistoryEntry[];

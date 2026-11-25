@@ -15,7 +15,7 @@ Once published to GitHub with Pages enabled (`Settings → Pages → Source: Git
 ## Core Features
 
 - **Tappable Status Summary Bar & Archive:** Live counters for **Active Lot**, **Incoming**, **Minor Repairs**, **Major Repairs**, and **Offsite**, plus a dedicated **Archive** where vehicles automatically move when marked **Frontline Ready**.
-- **Instant Search:** Filter immediately by Stock #, last 6 of VIN, Year/Make/Model, Location, Assigned Team Member, or Repair Notes.
+- **Instant Search:** Filter immediately by Stock #, last 6 of VIN, Year/Make/Model, Location, Offsite Location, or Repair Notes.
 - **One-Tap Status Progression:** Move any unit to the next stage straight from the card or jump to any status via the quick dropdown.
 - **NHTSA VIN Auto-Decode:** Enter a 17-character VIN in the Quick-Add modal or Detail Drawer to auto-fill Year, Make, Model, and Trim.
 - **Per-User Field-Level Activity History:** Every change made to any vehicle field (status, location, mileage, cost, date sent, notes, VIN/specs, photo, archive/restore) is logged automatically with exact before/after values, user name, and timestamp.

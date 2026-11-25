@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import {
+  Check,
   Cloud,
   CloudOff,
   Download,
@@ -10,7 +11,6 @@ import {
   UserCheck,
   X,
 } from 'lucide-react';
-import { DEFAULT_TEAM_MEMBERS } from '../data/mockVehicles';
 import type { SyncState, TeamUser, Vehicle } from '../types/vehicle';
 import { exportVehiclesToCsv, parseCsvVehicles } from '../services/csvService';
 import { bulkImportVehicles, fetchVehiclesFromRemote } from '../services/vehicleService';
@@ -22,7 +22,7 @@ interface SettingsModalProps {
   vehicles: Vehicle[];
   syncState: SyncState;
   onClose: () => void;
-  onSelectLocalUser: (name: string, email: string) => void;
+  onUpdateUserName: (name: string) => void;
   onLockApp: () => void;
 }
 
@@ -31,12 +31,24 @@ export function SettingsModal({
   vehicles,
   syncState,
   onClose,
-  onSelectLocalUser,
+  onUpdateUserName,
   onLockApp,
 }: SettingsModalProps) {
+  const [nameInput, setNameInput] = useState(user.name);
+  const [nameSaved, setNameSaved] = useState(false);
   const [importFeedback, setImportFeedback] = useState('');
   const [syncingNow, setSyncingNow] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleSaveName = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleaned = nameInput.trim();
+    if (!cleaned) return;
+    triggerHaptic('success');
+    onUpdateUserName(cleaned);
+    setNameSaved(true);
+    window.setTimeout(() => setNameSaved(false), 1800);
+  };
 
   const handleManualSync = async () => {
     triggerHaptic('light');
@@ -81,7 +93,7 @@ export function SettingsModal({
         <div className="px-5 py-4 border-b border-white/[0.08] flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-white tracking-tight">Settings &amp; Sync</h2>
-            <p className="text-xs text-slate-400">Team identity, Google Sheets sync &amp; backups</p>
+            <p className="text-xs text-slate-400">Your name, Google Sheets sync &amp; backups</p>
           </div>
           <button
             type="button"
@@ -94,12 +106,12 @@ export function SettingsModal({
         </div>
 
         <div className="overflow-y-auto px-5 py-4 space-y-5">
-          {/* Active Identity */}
+          {/* Your Name (for Change History Tracking) */}
           <section className="rounded-2xl bg-[#0D1119] border border-white/[0.08] p-4 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <UserCheck className="w-4 h-4 text-sky-400" />
-                <h3 className="text-sm font-semibold text-white">Active Team Member</h3>
+                <h3 className="text-sm font-semibold text-white">Your Name</h3>
               </div>
               <button
                 type="button"
@@ -115,33 +127,28 @@ export function SettingsModal({
               </button>
             </div>
 
-            <div>
-              <p className="text-xs text-slate-400 mb-2.5">
-                Choose who is logging updates on this phone (recorded on every vehicle edit &amp; checklist toggle):
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {DEFAULT_TEAM_MEMBERS.map((member) => {
-                  const active = member.email === user.email;
-                  return (
-                    <button
-                      key={member.email}
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('light');
-                        onSelectLocalUser(member.name, member.email);
-                      }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
-                        active
-                          ? 'bg-sky-500/20 border-sky-400/50 text-sky-300'
-                          : 'bg-white/[0.04] border-white/[0.08] text-slate-300 hover:bg-white/[0.08]'
-                      }`}
-                    >
-                      {member.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <p className="text-xs text-slate-400">
+              Used to record who made each vehicle update and checklist change in the activity history.
+            </p>
+
+            <form onSubmit={handleSaveName} className="flex gap-2">
+              <input
+                type="text"
+                required
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                placeholder="Enter your name"
+                className="field-input text-sm"
+              />
+              <button
+                type="submit"
+                disabled={!nameInput.trim() || nameInput.trim() === user.name}
+                className="shrink-0 inline-flex items-center gap-1.5 px-3.5 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:bg-white/[0.06] disabled:text-slate-500 text-slate-950 font-bold text-xs transition-colors cursor-pointer"
+              >
+                {nameSaved ? <Check className="w-3.5 h-3.5" /> : null}
+                <span>{nameSaved ? 'Saved' : 'Save'}</span>
+              </button>
+            </form>
           </section>
 
           {/* Google Sheets Live Sync Status */}

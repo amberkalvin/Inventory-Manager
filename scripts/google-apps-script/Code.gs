@@ -205,7 +205,10 @@ function doPost(e) {
       // Normalize alias fields so Sheet columns stay consistent
       copy.needs = copy.needs !== undefined ? copy.needs : copy.repairNotes || '';
       copy.dateSent = copy.dateSent !== undefined ? copy.dateSent : copy.expectedReturnDate || '';
-      copy.contact = copy.contact !== undefined ? copy.contact : copy.assignedTo || '';
+      copy.contact =
+        copy.offsiteLocation !== undefined
+          ? copy.offsiteLocation
+          : copy.contact || '';
 
       return copy;
     });
