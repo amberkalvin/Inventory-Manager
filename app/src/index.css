@@ -54,7 +54,7 @@ body {
     border-color: var(--border-strong);
   }
 
-  .surface-card-interactive:active {
+  .surface-card-interactive:active:not([data-menu-open="true"]) {
     transform: scale(0.992);
   }
 

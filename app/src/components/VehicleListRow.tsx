@@ -54,11 +54,18 @@ export function VehicleListRow({
 
   return (
     <article
+      data-menu-open={menuOpen ? 'true' : undefined}
       onClick={() => {
+        if (menuOpen) {
+          setMenuOpen(false);
+          return;
+        }
         triggerHaptic('light');
         onSelect(vehicle);
       }}
-      className="surface-card-interactive rounded-xl px-3 py-2.5 cursor-pointer relative flex items-center gap-3"
+      className={`surface-card-interactive rounded-xl px-3 py-2.5 cursor-pointer relative flex items-center gap-3 ${
+        menuOpen ? 'z-40' : 'z-0'
+      }`}
     >
       {/* Thumbnail with 1-tap camera upload/swap */}
       <VehicleThumbnail
@@ -137,40 +144,49 @@ export function VehicleListRow({
           </button>
 
           {menuOpen && (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="absolute right-0 mt-1.5 w-52 rounded-xl bg-[#182030] border border-white/15 shadow-2xl p-1.5 z-30"
-            >
-              {STATUS_ORDER.map((st) => {
-                const stMeta = STATUS_META[st];
-                const active = st === vehicle.status;
-                return (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={(e) => handleStatusUpdate(e, st)}
-                    className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-left cursor-pointer transition-colors ${
-                      active
-                        ? 'bg-white/10 text-white'
-                        : 'text-slate-300 hover:bg-white/[0.06]'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="w-2 h-2 rounded-full shrink-0"
-                        style={{ backgroundColor: stMeta.color }}
-                      />
-                      {stMeta.label}
-                    </span>
-                    {st === 'ready' && !archived && (
-                      <span className="text-[10px] text-emerald-400/90 font-semibold">
-                        Archive
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                }}
+              />
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute right-0 mt-1.5 w-52 rounded-xl bg-[#182030] border border-white/15 shadow-2xl p-1.5 z-50"
+              >
+                {STATUS_ORDER.map((st) => {
+                  const stMeta = STATUS_META[st];
+                  const active = st === vehicle.status;
+                  return (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={(e) => handleStatusUpdate(e, st)}
+                      className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-left cursor-pointer transition-colors ${
+                        active
+                          ? 'bg-white/10 text-white'
+                          : 'text-slate-300 hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: stMeta.color }}
+                        />
+                        {stMeta.label}
                       </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                      {st === 'ready' && !archived && (
+                        <span className="text-[10px] text-emerald-400/90 font-semibold">
+                          Archive
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
 
