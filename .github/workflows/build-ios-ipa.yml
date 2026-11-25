@@ -1,0 +1,86 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'ios_app/**'
+      - '.github/workflows/build-ios-ipa.yml'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'GitHub Release tag to attach Inventory_Manager.ipa to'
+        required: false
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-ipa:
+    name: Build & Package iOS ARM64 IPA
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build Release ARM64 IPA
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+        run: |
+          chmod +x ./ios_app/build_ipa.sh
+          ./ios_app/build_ipa.sh
+
+      - name: Verify IPA bundle contents & ARM64 binary
+        run: |
+          test -f Inventory_Manager.ipa
+          VERIFY_DIR="$(mktemp -d)"
+          unzip -q Inventory_Manager.ipa -d "$VERIFY_DIR"
+          BIN="$VERIFY_DIR/Payload/InventoryManager.app/InventoryManager"
+          HTML="$VERIFY_DIR/Payload/InventoryManager.app/WebApp/index.html"
+          PLIST="$VERIFY_DIR/Payload/InventoryManager.app/Info.plist"
+          test -f "$BIN"
+          test -f "$HTML"
+          test -f "$PLIST"
+          lipo -info "$BIN" | grep -q "arm64"
+          plutil -lint "$PLIST"
+          rm -rf "$VERIFY_DIR"
+
+      - name: Upload IPA workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inventory_Manager-ipa
+          path: Inventory_Manager.ipa
+          if-no-files-found: error
+
+      - name: Attach IPA to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.release_tag || 'v1.0.0' }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Inventory Manager $TAG" \
+              --notes "Automated release packages for Android (.apk) and iOS (.ipa)." || true
+          fi
+          gh release upload "$TAG" Inventory_Manager.ipa --clobber

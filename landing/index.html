@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0B0E14">
+  <meta name="description" content="Inventory Manager — Real-time mobile-first vehicle lot tracking for iPhone, Android, and Desktop. Launch the web app or download native APK and IPA packages.">
+  <link rel="icon" type="image/png" href="./icon-180.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
+  <title>Inventory Manager — Real-Time Vehicle Lot Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0B0E14;
+      --surface: #131822;
+      --surface-hover: #1A2130;
+      --border: rgba(255, 255, 255, 0.09);
+      --border-strong: rgba(56, 189, 248, 0.34);
+      --text: #F8FAFC;
+      --muted: #94A3B8;
+      --subtle: #64748B;
+      --sky: #38BDF8;
+      --emerald: #34D399;
+      --amber: #FBBF24;
+      --steel: #CBD5E1;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 50% -10%, #162235 0%, var(--bg) 58%);
+      color: var(--text);
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: max(24px, env(safe-area-inset-top)) 16px max(28px, env(safe-area-inset-bottom));
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .wrap {
+      width: 100%;
+      max-width: 680px;
+    }
+
+    .hero {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 24px;
+    }
+
+    .hero-icon {
+      width: 72px;
+      height: 72px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+      flex-shrink: 0;
+      object-fit: cover;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: clamp(22px, 4.5vw, 27px);
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .version {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(56, 189, 248, 0.14);
+      color: var(--sky);
+    }
+
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .stack {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    @media (min-width: 560px) {
+      .grid-2 {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    a.card {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0%, rgba(255, 255, 255, 0) 100%), var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      transition: transform 0.14s ease, border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    a.card:hover {
+      background: var(--surface-hover);
+      border-color: rgba(255, 255, 255, 0.18);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+    }
+
+    a.card:active {
+      transform: translateY(0);
+    }
+
+    a.card.primary {
+      border-color: var(--border-strong);
+      background: linear-gradient(180deg, rgba(56, 189, 248, 0.11) 0%, var(--surface) 100%);
+    }
+
+    a.card.primary:hover {
+      border-color: rgba(56, 189, 248, 0.58);
+      background: linear-gradient(180deg, rgba(56, 189, 248, 0.16) 0%, var(--surface-hover) 100%);
+    }
+
+    .card-tag {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .card h2 {
+      margin: 0 0 7px;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .card p {
+      margin: 0;
+      font-size: 13.5px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .card strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    code {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+      padding: 1px 5px;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--steel);
+    }
+
+    .specs {
+      margin-top: 14px;
+      padding: 14px 18px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(19, 24, 34, 0.65);
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    @media (min-width: 560px) {
+      .specs {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+    }
+
+    .spec-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .spec-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--subtle);
+    }
+
+    .spec-val {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--steel);
+    }
+
+    .footer {
+      margin-top: 22px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px 18px;
+      font-size: 12.5px;
+      color: var(--subtle);
+    }
+
+    .footer a {
+      color: var(--sky);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="hero">
+      <img class="hero-icon" src="./icon-180.png" alt="Inventory Manager App Icon">
+      <div>
+        <h1>Inventory Manager <span class="version">v1.0.0</span></h1>
+        <p class="sub">Real-time mobile vehicle lot tracking &bull; 1-Tap status pipeline &bull; NHTSA VIN auto-decode &bull; Offline-ready</p>
+      </div>
+    </header>
+
+    <section class="stack" aria-label="Launch and download options">
+      <a id="launch-pwa-card" class="card primary" href="./app/">
+        <div class="card-tag" style="color: var(--sky);">
+          <span>iPhone &bull; iPad &bull; Android &bull; Desktop (PWA)</span>
+        </div>
+        <h2>
+          <span>Launch Web App</span>
+          <span aria-hidden="true">&rarr;</span>
+        </h2>
+        <p>Open immediately with zero install. On iPhone Safari tap <strong>Share &rarr; Add to Home Screen</strong>, or in Android Chrome tap <strong>Install App</strong> for a full-screen home-screen experience with offline lot caching.</p>
+      </a>
+
+      <div class="grid-2">
+        <a id="download-apk-card" class="card" href="https://github.com/amberkalvin/Inventory-Manager/releases/latest/download/Inventory_Manager.apk">
+          <div class="card-tag" style="color: var(--amber);">
+            <span>Android 7.0+ Native Package</span>
+          </div>
+          <h2>
+            <span>Download Android .APK</span>
+            <span aria-hidden="true">&darr;</span>
+          </h2>
+          <p>Signed installable <code>.apk</code> package with native haptics, CSV share sheet, and full-screen dark UI.</p>
+        </a>
+
+        <a id="download-ipa-card" class="card" href="https://github.com/amberkalvin/Inventory-Manager/releases/latest/download/Inventory_Manager.ipa">
+          <div class="card-tag" style="color: var(--emerald);">
+            <span>iOS 15.0+ Native ARM64 Package</span>
+          </div>
+          <h2>
+            <span>Download iOS .IPA</span>
+            <span aria-hidden="true">&darr;</span>
+          </h2>
+          <p>Universal iPhone/iPad <code>.ipa</code> package ready for AltStore, SideStore, Sideloadly, or TrollStore.</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="specs" aria-label="Key capabilities">
+      <div class="spec-item">
+        <span class="spec-label">Live Sync</span>
+        <span class="spec-val">Firestore Real-Time + Offline</span>
+      </div>
+      <div class="spec-item">
+        <span class="spec-label">Workflow</span>
+        <span class="spec-val">6-Stage Vehicle Pipeline</span>
+      </div>
+      <div class="spec-item">
+        <span class="spec-label">Audit Trail</span>
+        <span class="spec-val">Per-User Change History</span>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <a id="github-repo-link" href="https://github.com/amberkalvin/Inventory-Manager">View Source &amp; Releases on GitHub</a>
+      <span>&bull;</span>
+      <a id="github-releases-link" href="https://github.com/amberkalvin/Inventory-Manager/releases">All Releases</a>
+    </footer>
+  </main>
+
+  <script>
+    // Auto-resolve repository owner & name when served from GitHub Pages (<owner>.github.io/<repo>/)
+    (function () {
+      const host = window.location.hostname;
+      if (!host.endsWith(".github.io")) return;
+      const owner = host.replace(".github.io", "");
+      const segments = window.location.pathname.split("/").filter(Boolean);
+      const repo = segments[0] || "Inventory-Manager";
+      const base = `https://github.com/${owner}/${repo}`;
+      const apkLink = document.getElementById("download-apk-card");
+      const ipaLink = document.getElementById("download-ipa-card");
+      const repoLink = document.getElementById("github-repo-link");
+      const relLink = document.getElementById("github-releases-link");
+      if (apkLink) apkLink.href = `${base}/releases/latest/download/Inventory_Manager.apk`;
+      if (ipaLink) ipaLink.href = `${base}/releases/latest/download/Inventory_Manager.ipa`;
+      if (repoLink) repoLink.href = base;
+      if (relLink) relLink.href = `${base}/releases`;
+    })();
+  </script>
+</body>
+</html>

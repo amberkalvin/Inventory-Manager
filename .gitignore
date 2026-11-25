@@ -1,0 +1,29 @@
+# Node / Vite
+node_modules/
+app/dist/
+app/.env
+app/.env.local
+_site/
+
+# Android build outputs & local keystores
+android_app/.gradle/
+android_app/build/
+android_app/app/build/
+android_app/local.properties
+android_app/release.keystore
+android_app/app/src/main/assets/webapp/
+
+# iOS build outputs
+ios_app/.derivedData/
+ios_app/.ipa_stage/
+ios_app/InventoryManager.xcodeproj/
+ios_app/InventoryManager/WebApp/
+
+# Compiled release packages (published via GitHub Releases)
+Inventory_Manager.apk
+Inventory_Manager.ipa
+
+# OS & editor junk
+.DS_Store
+Thumbs.db
+*.log
