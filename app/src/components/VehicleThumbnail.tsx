@@ -51,6 +51,7 @@ export function VehicleThumbnail({
           <img
             src={photoUrl}
             alt={alt}
+            referrerPolicy="no-referrer"
             className="w-full h-full object-cover"
           />
         ) : (
@@ -119,6 +120,7 @@ export function VehicleThumbnail({
           src={photoUrl}
           alt={alt}
           loading="lazy"
+          referrerPolicy="no-referrer"
           className="w-full h-full object-cover"
         />
       ) : (

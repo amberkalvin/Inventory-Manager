@@ -424,6 +424,7 @@ async function postVehiclesToRemote(vehicles: Vehicle[]): Promise<void> {
     return;
   }
 
+  const postVersion = mutationVersion;
   pendingWrites++;
   emitSyncState({
     status: 'syncing',
@@ -446,6 +447,49 @@ async function postVehiclesToRemote(vehicles: Vehicle[]): Promise<void> {
     if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
       throw new Error(extractReadableError(trimmed, res.status));
     }
+
+    // If Apps Script returned the updated vehicles (e.g. with Drive photo URLs),
+    // immediately replace base64 data URLs in local cache so future edits stay fast.
+    if (trimmed && postVersion === mutationVersion) {
+      try {
+        const parsed = JSON.parse(trimmed) as
+          | { ok?: boolean; error?: string; vehicles?: Record<string, unknown>[] }
+          | Record<string, unknown>[];
+        if (!Array.isArray(parsed) && parsed && typeof parsed.error === 'string' && parsed.error) {
+          throw new Error(`Google Apps Script error: ${parsed.error}`);
+        }
+        const returnedRecords = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed?.vehicles)
+            ? parsed.vehicles
+            : null;
+        if (returnedRecords && returnedRecords.length > 0) {
+          const urlById = new Map<string, string>();
+          for (const rec of returnedRecords) {
+            const id = normalizeOptionalString(rec.id);
+            const photo = normalizeOptionalString(rec.photoUrl);
+            if (id && photo && !photo.startsWith('data:')) {
+              urlById.set(id, photo);
+            }
+          }
+          if (urlById.size > 0) {
+            const updatedCache = readCachedVehicles().map((v) => {
+              const hostedUrl = urlById.get(v.id);
+              return hostedUrl && v.photoUrl !== hostedUrl
+                ? { ...v, photoUrl: hostedUrl }
+                : v;
+            });
+            writeCachedVehicles(updatedCache);
+          }
+        }
+      } catch (parseErr) {
+        if (parseErr instanceof Error && parseErr.message.startsWith('Google Apps Script error:')) {
+          throw parseErr;
+        }
+        // Ignore non-JSON OK bodies like "OK" or "Success"
+      }
+    }
+
     emitSyncState({
       status: 'synced',
       lastSyncedAt: new Date().toISOString(),
