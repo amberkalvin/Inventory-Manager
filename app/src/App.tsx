@@ -166,7 +166,6 @@ export function App() {
         v.model,
         v.trim ?? '',
         v.color ?? '',
-        v.location ?? '',
         v.offsiteLocation ?? '',
         v.repairNotes ?? '',
       ]
@@ -494,8 +493,8 @@ export function App() {
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={
                 showArchive
-                  ? 'Search archived vehicles by Stock #, VIN, Make, Model, or Location…'
-                  : 'Search active lot by Stock #, last 6 of VIN, Make, Model, or Location…'
+                  ? 'Search archived vehicles by Stock #, VIN, Make, Model, or Offsite…'
+                  : 'Search active lot by Stock #, last 6 of VIN, Make, Model, or Offsite…'
               }
               className="field-input pl-10 pr-9 text-sm"
             />

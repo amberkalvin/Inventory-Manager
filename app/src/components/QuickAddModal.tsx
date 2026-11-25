@@ -30,7 +30,6 @@ export function QuickAddModal({
   const [color, setColor] = useState('');
   const [mileage, setMileage] = useState('');
   const [status, setStatus] = useState<VehicleStatus>('incoming');
-  const [location, setLocation] = useState('Main Lot');
   const [offsiteLocation, setOffsiteLocation] = useState('');
   const [estimatedCost, setEstimatedCost] = useState('');
   const [expectedReturnDate, setExpectedReturnDate] = useState('');
@@ -90,7 +89,6 @@ export function QuickAddModal({
         color: color.trim() || undefined,
         mileage: mileage.trim() ? Number(mileage.replace(/[^0-9]/g, '')) : undefined,
         status,
-        location: location.trim() || undefined,
         offsiteLocation: offsiteLocation.trim() || undefined,
         estimatedCost: estimatedCost.trim()
           ? Number(estimatedCost.replace(/[^0-9.]/g, ''))
@@ -347,32 +345,6 @@ export function QuickAddModal({
               />
             </div>
             <div>
-              <label htmlFor="add-location" className="block text-xs font-medium text-slate-400 mb-1">
-                Location
-              </label>
-              <input
-                id="add-location"
-                type="text"
-                placeholder="Main Lot"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="field-input"
-              />
-            </div>
-            <div>
-              <label htmlFor="add-offsite" className="block text-xs font-medium text-slate-400 mb-1">
-                Offsite Location
-              </label>
-              <input
-                id="add-offsite"
-                type="text"
-                placeholder="Body shop, mechanic..."
-                value={offsiteLocation}
-                onChange={(e) => setOffsiteLocation(e.target.value)}
-                className="field-input"
-              />
-            </div>
-            <div>
               <label htmlFor="add-cost" className="block text-xs font-medium text-slate-400 mb-1">
                 Est. Repair Cost ($)
               </label>
@@ -388,17 +360,32 @@ export function QuickAddModal({
             </div>
           </div>
 
-          <div>
-            <label htmlFor="add-eta" className="block text-xs font-medium text-slate-400 mb-1">
-              Date Sent
-            </label>
-            <input
-              id="add-eta"
-              type="date"
-              value={expectedReturnDate}
-              onChange={(e) => setExpectedReturnDate(e.target.value)}
-              className="field-input"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="add-offsite" className="block text-xs font-medium text-slate-400 mb-1">
+                Offsite Location
+              </label>
+              <input
+                id="add-offsite"
+                type="text"
+                placeholder="Body shop, mechanic..."
+                value={offsiteLocation}
+                onChange={(e) => setOffsiteLocation(e.target.value)}
+                className="field-input"
+              />
+            </div>
+            <div>
+              <label htmlFor="add-eta" className="block text-xs font-medium text-slate-400 mb-1">
+                Date Sent
+              </label>
+              <input
+                id="add-eta"
+                type="date"
+                value={expectedReturnDate}
+                onChange={(e) => setExpectedReturnDate(e.target.value)}
+                className="field-input"
+              />
+            </div>
           </div>
 
           <div>

@@ -5,7 +5,6 @@ import {
   Building2,
   CheckSquare,
   ChevronDown,
-  MapPin,
   RotateCcw,
 } from 'lucide-react';
 import {
@@ -100,12 +99,6 @@ export function VehicleListRow({
         </div>
 
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
-          {vehicle.location && (
-            <span className="inline-flex items-center gap-1 text-slate-300 font-medium truncate max-w-[160px] sm:max-w-xs">
-              <MapPin className="w-3 h-3 text-sky-400 shrink-0" />
-              <span className="truncate">{vehicle.location}</span>
-            </span>
-          )}
           {vehicle.offsiteLocation && (
             <span className="inline-flex items-center gap-1 text-orange-300/90 font-medium truncate max-w-[160px] sm:max-w-xs">
               <Building2 className="w-3 h-3 shrink-0" />

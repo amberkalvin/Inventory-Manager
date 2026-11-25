@@ -49,7 +49,6 @@ export interface Vehicle {
   status: VehicleStatus;
   archived?: boolean;
   archivedAt?: string; // ISO timestamp
-  location?: string;
   offsiteLocation?: string;
   repairNotes?: string;
   estimatedCost?: number;

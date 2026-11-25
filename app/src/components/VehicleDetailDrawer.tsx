@@ -63,7 +63,6 @@ export function VehicleDetailDrawer({
   const [mileage, setMileage] = useState(
     vehicle.mileage !== undefined ? String(vehicle.mileage) : ''
   );
-  const [location, setLocation] = useState(vehicle.location ?? '');
   const [offsiteLocation, setOffsiteLocation] = useState(vehicle.offsiteLocation ?? '');
   const [estimatedCost, setEstimatedCost] = useState(
     vehicle.estimatedCost !== undefined ? String(vehicle.estimatedCost) : ''
@@ -93,7 +92,6 @@ export function VehicleDetailDrawer({
     if (!dirty.has('mileage')) {
       setMileage(vehicle.mileage !== undefined ? String(vehicle.mileage) : '');
     }
-    if (!dirty.has('location')) setLocation(vehicle.location ?? '');
     if (!dirty.has('offsiteLocation')) setOffsiteLocation(vehicle.offsiteLocation ?? '');
     if (!dirty.has('estimatedCost')) {
       setEstimatedCost(
@@ -210,7 +208,6 @@ export function VehicleDetailDrawer({
       updates.mileage = mileage.trim() ? Number(mileage.replace(/[^0-9]/g, '')) : undefined;
     }
     if (dirty.has('status')) updates.status = status;
-    if (dirty.has('location')) updates.location = location.trim() || undefined;
     if (dirty.has('offsiteLocation')) {
       updates.offsiteLocation = offsiteLocation.trim() || undefined;
     }
@@ -481,38 +478,21 @@ export function VehicleDetailDrawer({
               </div>
             </div>
 
-            {/* Location & Offsite Location */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">
-                  Location
-                </label>
-                <input
-                  type="text"
-                  value={location}
-                  onChange={(e) => {
-                    markDirty('location');
-                    setLocation(e.target.value);
-                  }}
-                  placeholder="Main Lot / Bay"
-                  className="field-input"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">
-                  Offsite Location
-                </label>
-                <input
-                  type="text"
-                  value={offsiteLocation}
-                  onChange={(e) => {
-                    markDirty('offsiteLocation');
-                    setOffsiteLocation(e.target.value);
-                  }}
-                  placeholder="Body shop, mechanic..."
-                  className="field-input"
-                />
-              </div>
+            {/* Offsite Location */}
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                Offsite Location
+              </label>
+              <input
+                type="text"
+                value={offsiteLocation}
+                onChange={(e) => {
+                  markDirty('offsiteLocation');
+                  setOffsiteLocation(e.target.value);
+                }}
+                placeholder="Body shop, mechanic, detailer..."
+                className="field-input"
+              />
             </div>
 
             {/* Needs / Repair Notes */}

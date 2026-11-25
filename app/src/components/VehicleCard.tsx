@@ -6,7 +6,6 @@ import {
   CalendarClock,
   CheckSquare,
   ChevronDown,
-  MapPin,
   RotateCcw,
   Wrench,
 } from 'lucide-react';
@@ -182,10 +181,10 @@ export function VehicleCard({
 
         {/* Metadata Strip */}
         <div className="mt-2.5 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-xs text-slate-400">
-          {vehicle.location && (
-            <span className="inline-flex items-center gap-1.5 text-slate-300 font-medium">
-              <MapPin className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-              <span className="truncate max-w-[180px]">{vehicle.location}</span>
+          {vehicle.offsiteLocation && (
+            <span className="inline-flex items-center gap-1.5 text-orange-300/90 font-medium">
+              <Building2 className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate max-w-[180px]">{vehicle.offsiteLocation}</span>
             </span>
           )}
           {vehicle.mileage !== undefined && (
@@ -194,12 +193,6 @@ export function VehicleCard({
             </span>
           )}
           {vehicle.color && <span>{vehicle.color}</span>}
-          {vehicle.offsiteLocation && (
-            <span className="inline-flex items-center gap-1 text-orange-300/90 font-medium">
-              <Building2 className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate max-w-[180px]">{vehicle.offsiteLocation}</span>
-            </span>
-          )}
           {vehicle.expectedReturnDate && !archived && (
             <span className="inline-flex items-center gap-1 text-amber-300/90">
               <CalendarClock className="w-3.5 h-3.5 shrink-0" />

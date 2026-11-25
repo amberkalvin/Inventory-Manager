@@ -175,7 +175,6 @@ function normalizeVehicleRecord(raw: Record<string, unknown>, fallbackIndex = 0)
         ? normalizeTimestamp(raw.archivedAt)
         : updatedAt
       : undefined,
-    location: normalizeOptionalString(raw.location),
     offsiteLocation:
       normalizeOptionalString(raw.offsiteLocation) ??
       normalizeOptionalString(raw.contact),
@@ -199,7 +198,7 @@ function serializeVehicleForRemote(v: Vehicle): Record<string, unknown> {
     ...v,
     stockNumber: v.stockNumber ?? '',
     color: v.color ?? '',
-    location: v.location ?? '',
+    location: '',
     offsiteLocation: v.offsiteLocation ?? '',
     contact: v.offsiteLocation ?? '',
     needs: v.repairNotes ?? '',
@@ -610,9 +609,6 @@ function buildVehicleChanges(
   if (has('mileage')) {
     pushNumberDiff('Mileage', previous.mileage, nextUpdates.mileage, formatMileage);
   }
-  if (has('location')) {
-    pushStringDiff('Location', previous.location, nextUpdates.location);
-  }
   if (has('offsiteLocation')) {
     pushStringDiff('Offsite Location', previous.offsiteLocation, nextUpdates.offsiteLocation);
   }
@@ -727,7 +723,6 @@ export async function createVehicle(
   if (archived) {
     initialChanges.push({ field: 'Archive', to: 'Archived (Frontline Ready)' });
   }
-  if (input.location) initialChanges.push({ field: 'Location', to: input.location });
   if (input.offsiteLocation) {
     initialChanges.push({ field: 'Offsite Location', to: input.offsiteLocation });
   }
