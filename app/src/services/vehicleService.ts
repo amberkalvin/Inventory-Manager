@@ -1,5 +1,4 @@
 import {
-  addDoc,
   collection,
   deleteDoc,
   deleteField,
@@ -9,7 +8,6 @@ import {
   query,
   serverTimestamp,
   Timestamp,
-  updateDoc,
   writeBatch,
 } from 'firebase/firestore';
 import { INITIAL_MOCK_HISTORY, INITIAL_MOCK_VEHICLES } from '../data/mockVehicles';
@@ -333,7 +331,7 @@ export function subscribeVehicles(
     q,
     (snap) => {
       const list: Vehicle[] = snap.docs.map((d) => {
-        const data = d.data();
+        const data = d.data({ serverTimestamps: 'estimate' });
         const status = normalizeVehicleStatus(data.status);
         const archived = Boolean(data.archived || status === 'ready');
         const updatedAt = normalizeTimestamp(data.updatedAt);
@@ -381,7 +379,8 @@ export function subscribeVehicles(
 export function subscribeVehicleHistory(
   mode: 'firebase' | 'local',
   vehicleId: string,
-  onData: (entries: HistoryEntry[]) => void
+  onData: (entries: HistoryEntry[]) => void,
+  onError?: (message: string) => void
 ): () => void {
   if (mode === 'local') {
     const emit = () => {
@@ -399,27 +398,36 @@ export function subscribeVehicleHistory(
     return () => {};
   }
 
-  const q = query(
-    collection(clients.db, 'vehicles', vehicleId, 'history'),
-    orderBy('timestamp', 'desc')
-  );
+  const historyCol = collection(clients.db, 'vehicles', vehicleId, 'history');
   return onSnapshot(
-    q,
+    historyCol,
     (snap) => {
-      const entries: HistoryEntry[] = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          timestamp: normalizeTimestamp(data.timestamp),
-          userEmail: String(data.userEmail ?? ''),
-          userName: String(data.userName ?? 'Team'),
-          action: String(data.action ?? ''),
-          changes: parseHistoryChanges(data.changes),
-        };
-      });
+      onError?.('');
+      const entries: HistoryEntry[] = snap.docs
+        .map((d) => {
+          const data = d.data({ serverTimestamps: 'estimate' });
+          return {
+            id: d.id,
+            timestamp: normalizeTimestamp(data.timestamp ?? data.clientTimestamp),
+            userEmail: String(data.userEmail ?? ''),
+            userName: String(data.userName ?? 'Team'),
+            action: String(data.action ?? ''),
+            changes: parseHistoryChanges(data.changes),
+          };
+        })
+        .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
       onData(entries);
     },
-    () => onData([])
+    (err) => {
+      if (err.code === 'permission-denied') {
+        onError?.(
+          'Firestore denied access to vehicle history. Verify your Firestore Security Rules allow read/create on /vehicles/{vehicleId}/history/{entryId}.'
+        );
+      } else {
+        onError?.(err.message || 'Unable to load vehicle history.');
+      }
+      onData([]);
+    }
   );
 }
 
@@ -474,7 +482,10 @@ export async function createVehicle(
 
   const clients = getFirebaseClients();
   if (!clients) throw new Error('Firebase not connected');
-  const ref = await addDoc(collection(clients.db, 'vehicles'), {
+  const vehicleRef = doc(collection(clients.db, 'vehicles'));
+  const historyRef = doc(collection(clients.db, 'vehicles', vehicleRef.id, 'history'));
+  const batch = writeBatch(clients.db);
+  batch.set(vehicleRef, {
     ...stripUndefined({
       ...(input as unknown as Record<string, unknown>),
       status,
@@ -485,14 +496,16 @@ export async function createVehicle(
     updatedAt: serverTimestamp(),
     updatedBy: user.name,
   });
-  await addDoc(collection(clients.db, 'vehicles', ref.id, 'history'), {
+  batch.set(historyRef, {
     timestamp: serverTimestamp(),
+    clientTimestamp: nowIso,
     userEmail: user.email,
     userName: user.name,
     action,
     changes: initialChanges,
   });
-  return ref.id;
+  await batch.commit();
+  return vehicleRef.id;
 }
 
 export async function updateVehicle(
@@ -549,6 +562,7 @@ export async function updateVehicle(
   const clients = getFirebaseClients();
   if (!clients) throw new Error('Firebase not connected');
   const vehicleRef = doc(clients.db, 'vehicles', previous.id);
+  const historyRef = doc(collection(clients.db, 'vehicles', previous.id, 'history'));
 
   const firestoreFields: Record<string, unknown> = {
     ...(normalizedUpdates as unknown as Record<string, unknown>),
@@ -560,18 +574,21 @@ export async function updateVehicle(
     firestoreFields.archivedAt = serverTimestamp();
   }
 
-  await updateDoc(vehicleRef, {
+  const batch = writeBatch(clients.db);
+  batch.update(vehicleRef, {
     ...toFirestoreUpdatePayload(firestoreFields),
     updatedAt: serverTimestamp(),
     updatedBy: user.name,
   });
-  await addDoc(collection(clients.db, 'vehicles', previous.id, 'history'), {
+  batch.set(historyRef, {
     timestamp: serverTimestamp(),
+    clientTimestamp: nowIso,
     userEmail: user.email,
     userName: user.name,
     action: summary,
     changes,
   });
+  await batch.commit();
   return true;
 }
 

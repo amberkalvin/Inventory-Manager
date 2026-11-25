@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  AlertTriangle,
   Archive,
   ArrowRight,
   Check,
@@ -75,6 +76,8 @@ export function VehicleDetailDrawer({
   const [repairNotes, setRepairNotes] = useState(vehicle.repairNotes ?? '');
 
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyError, setHistoryError] = useState('');
+  const [actionError, setActionError] = useState('');
   const [saving, setSaving] = useState(false);
   const [decoding, setDecoding] = useState(false);
   const [copiedVin, setCopiedVin] = useState(false);
@@ -93,18 +96,28 @@ export function VehicleDetailDrawer({
 
   const handleChecklistToggle = async (key: VehicleChecklistKey) => {
     if (togglingKey) return;
-    const nextChecked = !Boolean(vehicle.checklist?.[key]);
+    const nextChecked = !vehicle.checklist?.[key];
     triggerHaptic('light');
+    setActionError('');
     setTogglingKey(key);
     try {
       await onToggleChecklist(vehicle, key, nextChecked);
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : 'Unable to save checklist update.'
+      );
     } finally {
       setTogglingKey(null);
     }
   };
 
   useEffect(() => {
-    const unsub = subscribeVehicleHistory(mode, vehicle.id, setHistory);
+    const unsub = subscribeVehicleHistory(
+      mode,
+      vehicle.id,
+      setHistory,
+      setHistoryError
+    );
     return () => unsub();
   }, [mode, vehicle.id]);
 
@@ -139,6 +152,7 @@ export function VehicleDetailDrawer({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setActionError('');
     triggerHaptic('medium');
     try {
       await onSave(vehicle, {
@@ -161,6 +175,8 @@ export function VehicleDetailDrawer({
         photoUrl: photoUrl,
       });
       onClose();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Unable to save changes.');
     } finally {
       setSaving(false);
     }
@@ -249,6 +265,13 @@ export function VehicleDetailDrawer({
 
         {tab === 'details' ? (
           <form onSubmit={handleSave} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+            {actionError && (
+              <div className="rounded-xl bg-red-500/12 border border-red-400/25 px-3.5 py-2.5 flex items-start gap-2 text-xs text-red-200">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+                <span>{actionError}</span>
+              </div>
+            )}
+
             {/* Vehicle Thumbnail Banner */}
             <VehicleThumbnail
               photoUrl={photoUrl || undefined}
@@ -621,6 +644,12 @@ export function VehicleDetailDrawer({
           </form>
         ) : (
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+            {historyError && (
+              <div className="rounded-xl bg-red-500/12 border border-red-400/25 px-3.5 py-2.5 flex items-start gap-2 text-xs text-red-200">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+                <span>{historyError}</span>
+              </div>
+            )}
             {history.length === 0 ? (
               <div className="text-center py-12 text-slate-500 text-sm">
                 No activity logged yet for this vehicle.
