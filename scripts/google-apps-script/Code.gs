@@ -1,19 +1,16 @@
 /**
  * Inventory Manager — Google Sheets + Google Drive Sync Backend
  *
- * Stores all vehicle fields (including checklist & change history) in the first
- * tab of your Google Sheet, and automatically saves uploaded vehicle photos to
- * a "Inventory Manager Photos" folder in Google Drive so photos sync fast
- * across all phones without hitting Google Sheets' 50,000-character cell limit.
- *
  * Setup:
  * 1. Open your Google Sheet → Extensions → Apps Script.
  * 2. Replace everything in Code.gs with this file and click Save.
- * 3. Click Deploy → Manage deployments → Edit (pencil icon) → Version: New version → Deploy.
- *    (Grant Google Drive permission when prompted on first deploy/test.)
+ * 3. In the top toolbar dropdown, select "authorizeDrive" and click Run once
+ *    so Google prompts you to grant Google Drive permission for vehicle photos.
+ * 4. Click Deploy → Manage deployments → Edit (pencil icon) → Version: New version → Deploy.
  */
 
 const PHOTO_FOLDER_NAME = 'Inventory Manager Photos';
+const DEFAULT_SHEET_NAME = 'AppInventory';
 
 const COLUMNS = [
   'id',
@@ -41,13 +38,41 @@ const COLUMNS = [
   'createdAt',
 ];
 
+/**
+ * Run this function ONCE from the Apps Script editor toolbar to authorize
+ * Google Drive access before deploying a new version.
+ */
+function authorizeDrive() {
+  const folder = getOrCreatePhotoFolder();
+  const sheet = getInventorySheet();
+  Logger.log('Authorized! Photo folder: ' + folder.getName() + ' | Sheet tab: ' + sheet.getName());
+}
+
 function getInventorySheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheets()[0];
-  if (!sheet) {
-    throw new Error('No sheet tab found in this spreadsheet.');
+  const sheets = ss.getSheets();
+
+  // 1. Prefer any existing tab whose A1 header is "id" (the app's data tab)
+  for (let i = 0; i < sheets.length; i++) {
+    const a1 = String(sheets[i].getRange(1, 1).getValue() || '').trim().toLowerCase();
+    if (a1 === 'id') {
+      return sheets[i];
+    }
   }
-  return sheet;
+
+  // 2. Otherwise look for a dedicated inventory tab by common name
+  const named =
+    ss.getSheetByName(DEFAULT_SHEET_NAME) ||
+    ss.getSheetByName('Inventory') ||
+    ss.getSheetByName('Vehicles');
+  if (named) {
+    return named;
+  }
+
+  // 3. Otherwise create a fresh dedicated tab so we never touch other tabs
+  const created = ss.insertSheet(DEFAULT_SHEET_NAME);
+  created.getRange(1, 1, 1, COLUMNS.length).setValues([COLUMNS]);
+  return created;
 }
 
 function getOrCreatePhotoFolder() {
@@ -111,6 +136,11 @@ function readVehiclesFromSheet(sheet) {
     return String(h || '').trim();
   });
 
+  // Guard against reading a tab without valid header columns
+  if (headers.indexOf('id') === -1 && headers.indexOf('model') === -1) {
+    return [];
+  }
+
   const vehicles = [];
   for (let r = 1; r < values.length; r++) {
     const row = values[r];
@@ -125,15 +155,19 @@ function readVehiclesFromSheet(sheet) {
       if (!key) continue;
       let val = row[c];
       if (val instanceof Date) {
-        val = key === 'dateSent'
-          ? Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd')
-          : val.toISOString();
+        val =
+          key === 'dateSent'
+            ? Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd')
+            : val.toISOString();
       } else if (key === 'checklist' || key === 'history') {
         val = parseCellJson(val);
       }
       item[key] = val;
     }
-    vehicles.push(item);
+
+    if (item.id || item.make || item.model || item.stockNumber || item.vin) {
+      vehicles.push(item);
+    }
   }
   return vehicles;
 }
@@ -169,9 +203,9 @@ function doPost(e) {
       }
 
       // Normalize alias fields so Sheet columns stay consistent
-      copy.needs = copy.needs !== undefined ? copy.needs : (copy.repairNotes || '');
-      copy.dateSent = copy.dateSent !== undefined ? copy.dateSent : (copy.expectedReturnDate || '');
-      copy.contact = copy.contact !== undefined ? copy.contact : (copy.assignedTo || '');
+      copy.needs = copy.needs !== undefined ? copy.needs : copy.repairNotes || '';
+      copy.dateSent = copy.dateSent !== undefined ? copy.dateSent : copy.expectedReturnDate || '';
+      copy.contact = copy.contact !== undefined ? copy.contact : copy.assignedTo || '';
 
       return copy;
     });
@@ -187,7 +221,6 @@ function doPost(e) {
         }
         if (col === 'history') {
           if (Array.isArray(val)) {
-            // Keep history comfortably under Google Sheets' 50,000-character cell limit
             let trimmed = val.slice(0, 100);
             let serialized = JSON.stringify(trimmed);
             while (serialized.length > 45000 && trimmed.length > 1) {

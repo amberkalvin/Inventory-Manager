@@ -315,9 +315,17 @@ function parseRemoteVehicleRecords(
     throw new Error('Unexpected response format from Google Apps Script.');
   }
 
-  return items.filter((item): item is Record<string, unknown> =>
-    Boolean(item && typeof item === 'object')
-  );
+  return items.filter((item): item is Record<string, unknown> => {
+    if (!item || typeof item !== 'object') return false;
+    const rec = item as Record<string, unknown>;
+    return Boolean(
+      normalizeOptionalString(rec.id) ||
+        normalizeOptionalString(rec.make) ||
+        normalizeOptionalString(rec.model) ||
+        normalizeOptionalString(rec.stockNumber) ||
+        normalizeOptionalString(rec.vin)
+    );
+  });
 }
 
 export async function fetchVehiclesFromRemote(): Promise<Vehicle[] | null> {
